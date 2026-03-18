@@ -1,0 +1,31 @@
+# Source files (dist/ is the published output)
+src/
+tsconfig.json
+*.ts
+!*.d.ts
+
+# Environment and config
+.env
+.env.*
+.eslintrc*
+.prettierrc*
+
+# Development artifacts
+node_modules/
+coverage/
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+
+# Docker (only for hosted deployment, not npm)
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Tests
+__tests__/
+*.test.ts
+*.spec.ts
+vitest.config.*
