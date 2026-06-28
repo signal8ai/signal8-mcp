@@ -1,0 +1,15 @@
+node_modules
+dist
+.env
+.env.*
+*.md
+!README.md
+.git
+.gitignore
+coverage
+__tests__
+*.test.ts
+*.spec.ts
+.vscode
+.idea
+.npmignore

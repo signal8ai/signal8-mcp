@@ -1,11 +1,12 @@
 /**
  * Company Data MCP Tools (Phase 2)
  *
- * 13 per-company data tools covering market data, fundamentals, and research:
- * - Market: get_quote, get_market_metrics, get_short_interest, get_float
+ * 14 per-company data tools covering market data, fundamentals, and research:
+ * - Market: get_quote, get_market_metrics, get_short_interest, get_float, get_historical_prices, get_stock_price_change
  * - Fundamentals: get_financials, get_earnings, get_executives
- * - Research: get_peers, get_transcripts, get_news, get_analyst_consensus
+ * - Research: get_peers, get_transcripts, get_news, get_analyst_consensus, get_analyst_estimates
  * - Events: get_material_events, get_clinical_trials
+ * - Clinical Trials (market-wide): search_clinical_trials
  */
 
 import { z } from 'zod/v4';
@@ -96,6 +97,62 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
       ),
   );
 
+  server.registerTool(
+    'get_historical_prices',
+    {
+      title: 'Get Historical Stock Prices',
+      description:
+        'Get historical OHLCV price candles for a stock. Supports daily, weekly, and monthly ' +
+        'resolutions. Use period shorthand (1M, 3M, 6M, 1Y, 5Y, ALL) or explicit from/to UNIX ' +
+        'timestamps. Default is 1 year of daily candles. Use this to compute price returns, ' +
+        'chart price history, or analyze volume trends over time.',
+      inputSchema: z.object({
+        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        period: z.enum(['1M', '3M', '6M', '1Y', '5Y', 'ALL'])
+          .optional()
+          .describe('Lookback period shorthand (default: "1Y"). Ignored if from/to are provided.'),
+        resolution: z.enum(['D', 'W', 'M'])
+          .optional()
+          .describe('Candle resolution: "D" (daily, default), "W" (weekly), "M" (monthly)'),
+        from: z.number().int().optional().describe('Start date as UNIX timestamp (overrides period)'),
+        to: z.number().int().optional().describe('End date as UNIX timestamp (overrides period)'),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ ticker, period, resolution, from, to }) => {
+      const params: Record<string, string> = {};
+      if (resolution) params.resolution = resolution;
+      if (from !== undefined && to !== undefined) {
+        params.from = String(from);
+        params.to = String(to);
+      } else if (period) {
+        params.period = period;
+      }
+      return toolHandler(() =>
+        client.get(`/companies/${encodeURIComponent(ticker)}/candles`, params),
+      );
+    },
+  );
+
+  server.registerTool(
+    'get_stock_price_change',
+    {
+      title: 'Get Stock Price Change',
+      description:
+        'Get percentage price changes for a stock across multiple timeframes: ' +
+        '1D, 5D, 1M, 3M, 6M, YTD, 1Y, 3Y, 5Y, 10Y, and MAX. ' +
+        'Use this for quick "how much is it up/down" answers without fetching full candle data.',
+      inputSchema: z.object({
+        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ ticker }) =>
+      toolHandler(() =>
+        client.get(`/companies/${encodeURIComponent(ticker)}/price-change`),
+      ),
+  );
+
   // ── Fundamentals ──────────────────────────────────────────────
 
   server.registerTool(
@@ -113,7 +170,7 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
           .describe('Financial period type: "annual", "quarter", or "ttm" (trailing twelve months). Defaults to annual.'),
         limit: z.number().int().min(1).max(40)
           .optional()
-          .describe('Maximum number of periods to return (1-40). Defaults to server setting.'),
+          .describe('Maximum number of periods to return (1-40). Defaults to 8.'),
       }),
       annotations: { readOnlyHint: true },
     },
@@ -121,7 +178,7 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
       toolHandler(() =>
         client.get(`/companies/${encodeURIComponent(ticker)}/financials`, {
           ...(type ? { type } : {}),
-          ...(limit !== undefined ? { limit: String(limit) } : {}),
+          limit: String(limit ?? 8),
         }),
       ),
   );
@@ -138,14 +195,14 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
         limit: z.number().int().min(1).max(40)
           .optional()
-          .describe('Maximum number of earnings periods to return (1-40). Defaults to server setting.'),
+          .describe('Maximum number of earnings periods to return (1-40). Defaults to 8.'),
       }),
       annotations: { readOnlyHint: true },
     },
     async ({ ticker, limit }) =>
       toolHandler(() =>
         client.get(`/companies/${encodeURIComponent(ticker)}/earnings`, {
-          ...(limit !== undefined ? { limit: String(limit) } : {}),
+          limit: String(limit ?? 8),
         }),
       ),
   );
@@ -171,6 +228,9 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
 
   // ── Research ──────────────────────────────────────────────────
 
+  // DISABLED (rights review 2026-06-13): FMP stock-peers dataset — not in our FMP
+  // packages. Gate until rights sorted.
+  /*
   server.registerTool(
     'get_peers',
     {
@@ -194,7 +254,11 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         }),
       ),
   );
+  */
 
+  // DISABLED (review 2026-06-13): we do not have redistribution rights for transcript
+  // data in our provider contract. Do not expose.
+  /*
   server.registerTool(
     'get_transcripts',
     {
@@ -205,19 +269,22 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'during earnings calls.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
-        limit: z.number().int().min(1).max(20)
-          .optional()
-          .describe('Maximum number of transcripts to return (1-20). Defaults to server setting.'),
+        year: z.number().int().min(2000).max(2100)
+          .describe('Fiscal year of the earnings call (required, e.g., 2025)'),
+        quarter: z.number().int().min(1).max(4)
+          .describe('Fiscal quarter of the earnings call (required, 1-4)'),
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ ticker, limit }) =>
+    async ({ ticker, year, quarter }) =>
       toolHandler(() =>
         client.get(`/companies/${encodeURIComponent(ticker)}/transcript`, {
-          ...(limit !== undefined ? { limit: String(limit) } : {}),
+          year: String(year),
+          quarter: String(quarter),
         }),
       ),
   );
+  */
 
   server.registerTool(
     'get_news',
@@ -225,19 +292,23 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
       title: 'Get Company News',
       description:
         'Get recent news articles and press releases for a company. Use when ' +
-        'researching recent developments, catalysts, or sentiment drivers.',
+        'researching recent developments, catalysts, or sentiment drivers. Set ' +
+        'pressReleasesOnly to return only official company press releases.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
-        limit: z.number().int().min(1).max(50)
+        limit: z.number().int().min(1).max(20)
           .optional()
-          .describe('Maximum number of news articles to return (1-50). Defaults to server setting.'),
+          .describe('Maximum number of articles to return (1-20). Defaults to 10.'),
+        pressReleasesOnly: z.boolean().optional()
+          .describe('When true, return only official company press releases (exclude third-party news).'),
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ ticker, limit }) =>
+    async ({ ticker, limit, pressReleasesOnly }) =>
       toolHandler(() =>
         client.get(`/companies/${encodeURIComponent(ticker)}/news`, {
-          ...(limit !== undefined ? { limit: String(limit) } : {}),
+          limit: String(limit ?? 10),
+          ...(pressReleasesOnly === true ? { pressReleasesOnly: 'true' } : {}),
         }),
       ),
   );
@@ -261,8 +332,39 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
       ),
   );
 
+  server.registerTool(
+    'get_analyst_estimates',
+    {
+      title: 'Get Analyst Estimates',
+      description:
+        'Get forward analyst estimates for a company including EPS, revenue, EBITDA, ' +
+        'and net income (low/high/avg) with analyst counts. Supports annual and quarterly ' +
+        'periods. Use when analyzing forward earnings expectations or revenue forecasts.',
+      inputSchema: z.object({
+        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        period: z.enum(['annual', 'quarter'])
+          .optional()
+          .describe('Estimate period: "annual" (default) or "quarter".'),
+        limit: z.number().int().min(1).max(40)
+          .optional()
+          .describe('Maximum number of estimate periods to return (1-40). Defaults to 8.'),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ ticker, period, limit }) =>
+      toolHandler(() =>
+        client.get(`/companies/${encodeURIComponent(ticker)}/estimates`, {
+          ...(period ? { period } : {}),
+          limit: String(limit ?? 8),
+        }),
+      ),
+  );
+
   // ── Events ────────────────────────────────────────────────────
 
+  // DISABLED (review 2026-06-13): not implemented — /companies/:ticker/events returns
+  // HTTP 500 for every ticker (AAPL, TSLA verified). Re-enable only once it works.
+  /*
   server.registerTool(
     'get_material_events',
     {
@@ -275,17 +377,18 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
         limit: z.number().int().min(1).max(50)
           .optional()
-          .describe('Maximum number of events to return (1-50). Defaults to server setting.'),
+          .describe('Maximum number of events to return (1-50). Defaults to 10.'),
       }),
       annotations: { readOnlyHint: true },
     },
     async ({ ticker, limit }) =>
       toolHandler(() =>
         client.get(`/companies/${encodeURIComponent(ticker)}/events`, {
-          ...(limit !== undefined ? { limit: String(limit) } : {}),
+          limit: String(limit ?? 10),
         }),
       ),
   );
+  */
 
   server.registerTool(
     'get_clinical_trials',
@@ -299,15 +402,51 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         ticker: z.string().describe('Stock ticker symbol (e.g., "MRNA", "PFE")'),
         limit: z.number().int().min(1).max(50)
           .optional()
-          .describe('Maximum number of clinical trials to return (1-50). Defaults to server setting.'),
+          .describe('Maximum number of clinical trials to return (1-50). Defaults to 10.'),
       }),
       annotations: { readOnlyHint: true },
     },
     async ({ ticker, limit }) =>
       toolHandler(() =>
         client.get(`/companies/${encodeURIComponent(ticker)}/clinical-trials`, {
-          ...(limit !== undefined ? { limit: String(limit) } : {}),
+          limit: String(limit ?? 10),
         }),
       ),
+  );
+
+  server.registerTool(
+    'search_clinical_trials',
+    {
+      title: 'Search Clinical Trials',
+      description:
+        'Search clinical trials market-wide (cross-company). Distinct from get_clinical_trials, ' +
+        'which is scoped to a single ticker. Filter by phase, indication, sponsor, status, and ' +
+        'date window; sort and paginate the results.',
+      inputSchema: z.object({
+        phase: z.string().optional().describe('Trial phase filter (e.g., "Phase 3")'),
+        indication: z.string().optional().describe('Condition / indication filter'),
+        sponsor: z.string().optional().describe('Sponsor name filter'),
+        status: z.string().optional().describe('Trial status filter'),
+        dateField: z.string().optional().describe('Date field to filter/sort on'),
+        from: z.string().optional().describe('Start date (YYYY-MM-DD)'),
+        to: z.string().optional().describe('End date (YYYY-MM-DD)'),
+        sort: z.string().optional().describe('Sort field'),
+        order: z.enum(['asc', 'desc']).optional().describe('Sort direction'),
+        limit: z.number().min(1).max(100).optional().describe(
+          'Maximum results to return (1-100, default: 50)',
+        ),
+        offset: z.number().min(0).optional().describe('Offset for pagination (default: 0)'),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async (params) => {
+      const queryParams: Record<string, string> = {};
+      for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined) {
+          queryParams[key] = String(value);
+        }
+      }
+      return toolHandler(() => client.get('/clinical-trials/search', queryParams));
+    },
   );
 }

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "ai.signal8/mcp",
+  "title": "Signal8",
+  "description": "SEC filings, dilution, insider & institutional ownership, and political-trade data for AI agents.",
+  "version": "0.11.1",
+  "websiteUrl": "https://signal8.ai/developer",
+  "repository": {
+    "url": "https://github.com/signal8ai/signal8",
+    "source": "github",
+    "subfolder": "packages/mcp-server"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.signal8.ai/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Bearer token using your Signal8 API key (e.g. \"Bearer sk_live_…\"). Create one at https://signal8.ai/settings/api-keys.",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@signal8ai/mcp",
+      "version": "0.11.1",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SIGNAL8_API_KEY",
+          "description": "Signal8 API key (starts with sk_live_ or sk_test_). Create one at https://signal8.ai/settings/api-keys.",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

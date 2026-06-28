@@ -2,12 +2,10 @@
  * Dilution-related MCP Tools
  *
  * Tools for analyzing dilution risk, historical performance after dilution events,
- * active financial instruments, and IB6 baby shelf capacity.
+ * and IB6 baby shelf capacity.
  * - get_dilution_risk: Dilution Pressure Score (0-100) and qualitative assessment
  * - get_dilution_performance: Post-dilution stock price returns
- * - get_instruments: Active warrants, convertibles, ATMs, shelf registrations
  * - get_baby_shelf: IB6 remaining offering capacity
- * - get_instrument_detail: Single instrument lifecycle detail
  */
 
 import { z } from 'zod/v4';
@@ -60,26 +58,7 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
       toolHandler(() => client.get(`/dilution/${encodeURIComponent(ticker)}/performance`)),
   );
 
-  // Tool 5: get_instruments
-  server.registerTool(
-    'get_instruments',
-    {
-      title: 'Get Active Financial Instruments',
-      description:
-        'Get all active financial instruments for a company including warrants, convertible notes, ' +
-        'ATM (at-the-market) programs, and shelf registrations. Each instrument includes lifecycle ' +
-        'tracking with XBRL reconciliation, amendment supersession, and filing priority merge. ' +
-        'This is the living mutable instrument database that tracks instruments from issuance to expiry.',
-      inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
-      }),
-      annotations: { readOnlyHint: true },
-    },
-    async ({ ticker }) =>
-      toolHandler(() => client.get(`/dilution/${encodeURIComponent(ticker)}/instruments`)),
-  );
-
-  // Tool 6: get_baby_shelf
+  // Tool 5: get_baby_shelf
   server.registerTool(
     'get_baby_shelf',
     {
@@ -98,29 +77,4 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
       toolHandler(() => client.get(`/dilution/${encodeURIComponent(ticker)}/ib6`)),
   );
 
-  // Tool: get_instrument_detail
-  server.registerTool(
-    'get_instrument_detail',
-    {
-      title: 'Get Instrument Detail',
-      description:
-        'Get detailed information for a single financial instrument by its numeric ID. ' +
-        'Returns full lifecycle data including original/remaining shares, exercise prices, ' +
-        'issuance/expiration dates, holder information, series designation, and source filing URL. ' +
-        'Use get_instruments first to discover instrument IDs for a company.',
-      inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
-        instrumentId: z.number().int().min(1).describe(
-          'Numeric instrument ID (from get_instruments results)',
-        ),
-      }),
-      annotations: { readOnlyHint: true },
-    },
-    async ({ ticker, instrumentId }) =>
-      toolHandler(() =>
-        client.get(
-          `/dilution/${encodeURIComponent(ticker)}/instruments/${encodeURIComponent(String(instrumentId))}`,
-        ),
-      ),
-  );
 }

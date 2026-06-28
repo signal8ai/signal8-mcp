@@ -39,6 +39,8 @@ export function registerComplianceTools(server: McpServer, client: Signal8ApiCli
       toolHandler(() => client.get(`/compliance/${encodeURIComponent(ticker)}/evaluation`)),
   );
 
+  // DISABLED: get_deficiencies — broken; deficiency_notices table has no populating job, returns 0 for every ticker
+  /*
   // Tool 12: get_deficiencies
   server.registerTool(
     'get_deficiencies',
@@ -56,8 +58,11 @@ export function registerComplianceTools(server: McpServer, client: Signal8ApiCli
     async ({ ticker }) =>
       toolHandler(() => client.get(`/compliance/${encodeURIComponent(ticker)}/deficiencies`)),
   );
+  */
 
   // Tool: get_compliance_alerts
+  // DISABLED (remove per QA 2026-06-15)
+  /*
   server.registerTool(
     'get_compliance_alerts',
     {
@@ -72,8 +77,8 @@ export function registerComplianceTools(server: McpServer, client: Signal8ApiCli
         severity: z.string().optional().describe(
           'Filter by severity level (e.g., "urgent", "warning", "info")',
         ),
-        limit: z.number().min(1).max(200).optional().describe(
-          'Maximum results to return (default: 50, max: 200)',
+        limit: z.number().min(1).max(100).optional().describe(
+          'Maximum results to return (default: 50, max: 100)',
         ),
         offset: z.number().min(0).optional().describe(
           'Pagination offset (default: 0)',
@@ -91,8 +96,11 @@ export function registerComplianceTools(server: McpServer, client: Signal8ApiCli
       );
     },
   );
+  */
 
   // Tool: get_listing_classification
+  // DISABLED (remove per QA 2026-06-15)
+  /*
   server.registerTool(
     'get_listing_classification',
     {
@@ -112,4 +120,5 @@ export function registerComplianceTools(server: McpServer, client: Signal8ApiCli
         client.get(`/compliance/${encodeURIComponent(ticker)}/listing-classification`),
       ),
   );
+  */
 }

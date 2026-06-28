@@ -1,7 +1,17 @@
 {
   "name": "@signal8ai/mcp",
-  "version": "0.1.0",
+  "mcpName": "ai.signal8/mcp",
+  "version": "0.11.1",
   "description": "Signal8 MCP Server - SEC filing intelligence for AI agents",
+  "homepage": "https://signal8.ai/developer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/signal8ai/signal8-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/signal8ai/signal8-mcp/issues"
+  },
+  "author": "Signal8 AI, Inc. (https://signal8.ai)",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -15,7 +25,7 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && chmod +x dist/stdio.js dist/http-transport.js",
     "dev": "tsc --watch",
     "start:stdio": "node dist/stdio.js",
     "start:http": "node dist/http-transport.js",
@@ -35,8 +45,7 @@
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^24.10.1",
-    "typescript": "^5.3.0",
-    "vitest": "^4.1.0"
+    "typescript": "^5.3.0"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -48,24 +57,9 @@
     "dilution",
     "ai",
     "claude",
-    "cursor",
-    "model-context-protocol",
-    "sec-filings",
-    "stock-analysis"
+    "cursor"
   ],
   "license": "MIT",
-  "author": "Signal8 <hello@signal8.ai> (https://signal8.ai)",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/signal8ai/signal8-mcp.git"
-  },
-  "homepage": "https://github.com/signal8ai/signal8-mcp#readme",
-  "bugs": {
-    "url": "https://github.com/signal8ai/signal8-mcp/issues"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
   "files": [
     "dist",
     "README.md",

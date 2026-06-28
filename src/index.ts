@@ -8,7 +8,7 @@
  * import { createMcpServer, Signal8ApiClient } from '@signal8ai/mcp';
  *
  * const client = new Signal8ApiClient({
- *   baseUrl: 'https://api.signal8.com',
+ *   baseUrl: 'https://api.signal8.ai/api/v1/public',
  *   apiKey: 'sk_live_xxx',
  * });
  *

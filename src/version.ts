@@ -1,8 +1,10 @@
 /**
  * Package version constants.
  *
- * Keep VERSION in sync with package.json when bumping releases.
+ * Single source of truth for the package version across the codebase
+ * (server factory, HTTP/stdio transports, User-Agent header). Keep this
+ * value in sync with package.json + server.json when bumping releases.
  */
-export const VERSION = '0.1.0';
+export const VERSION = '0.11.0';
 export const PACKAGE_NAME = '@signal8ai/mcp';
 export const USER_AGENT = `${PACKAGE_NAME}/${VERSION}`;

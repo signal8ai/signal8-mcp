@@ -1,0 +1,34 @@
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+
+startCommand:
+  type: stdio
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP server.
+    type: object
+    required:
+      - signal8ApiKey
+    properties:
+      signal8ApiKey:
+        type: string
+        description: >-
+          Signal8 API key (starts with sk_live_ or sk_test_). Create one at
+          https://signal8.ai/settings/api-keys.
+      signal8ApiUrl:
+        type: string
+        default: https://api.signal8.ai/api/v1/public
+        description: >-
+          Optional override for the Signal8 public REST API base URL. Leave
+          unset to use the production endpoint.
+  commandFunction:
+    # A JS function that produces the CLI command to start the MCP server on stdio.
+    |-
+    (config) => ({
+      command: 'npx',
+      args: ['-y', '@signal8ai/mcp'],
+      env: {
+        SIGNAL8_API_KEY: config.signal8ApiKey,
+        ...(config.signal8ApiUrl ? { SIGNAL8_API_URL: config.signal8ApiUrl } : {})
+      }
+    })
+  exampleConfig:
+    signal8ApiKey: sk_live_example_key_123

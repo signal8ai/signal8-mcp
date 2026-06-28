@@ -14,9 +14,15 @@
  * - get_legal_counsels: Legal counsel relationships with role taxonomy
  * - get_insider_transactions: Detailed Form 4 transaction history
  * - get_insider_cluster_buys: Cluster buying pattern detection
+ * - get_institution_activity: Institution position changes over recent 13F periods (by CIK)
+ * - get_institution_filings: Institution 13F filing list (by CIK)
+ * - get_institution_derivatives: Institution PUT/CALL derivative positions (by CIK)
+ * - get_institution_portfolio_analytics: Institution sector allocation + top holdings (by CIK)
+ * - get_institutions_discovery: Market-wide top-AUM + most-active institutions (no CIK)
  *
  * Cross-company intelligence (no ticker required):
  * - get_institution_top_aum: Top institutional holders by AUM across all companies
+ * - search_institutions: Search institutional investors by name
  * - get_counsel_cross_company: Law firm engagements across multiple companies
  * - get_insider_cross_company: Insider trading patterns across multiple companies
  */
@@ -35,6 +41,8 @@ import { toolHandler } from './tool-handler.js';
 export function registerIntelligenceTools(server: McpServer, client: Signal8ApiClient): void {
   // ── Existing Phase 1 Tools (retrofitted with annotations) ──────
 
+  // DISABLED: get_counterparties + get_counsel — legacy 2025 feature, dropped; counsel page disabled for months, extraction data unreliable (misspellings/dupes)
+  /*
   server.registerTool(
     'get_counterparties',
     {
@@ -68,6 +76,7 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
     async ({ ticker }) =>
       toolHandler(() => client.get(`/intelligence/${encodeURIComponent(ticker)}/counsel`)),
   );
+  */
 
   server.registerTool(
     'get_insiders',
@@ -76,14 +85,30 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
       description:
         'Get insider trading discovery data for a company. Includes cluster buying detection, ' +
         'entity-centric insider model, and Form 4 cross-referencing. Shows insider transactions ' +
-        'with buying/selling patterns that may signal upcoming corporate actions.',
+        'with buying/selling patterns that may signal upcoming corporate actions. ' +
+        'Each insider includes a transactionBreakdown by SEC code (P=Purchase, S=Sale, ' +
+        'F=Tax withholding, M=Exercise, G=Gift, A=Award), netSharesSold12m (code S only, ' +
+        'excludes tax withholding), and isPrimarilyTaxWithholding flag to distinguish routine ' +
+        'RSU vesting from discretionary selling. Supports pagination with limit/offset.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
+        limit: z.number().int().min(1).max(100)
+          .optional()
+          .describe('Maximum results to return (default: 20, max: 100)'),
+        offset: z.number().int().min(0)
+          .optional()
+          .describe('Offset for pagination (default: 0)'),
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ ticker }) =>
-      toolHandler(() => client.get(`/intelligence/${encodeURIComponent(ticker)}/insiders`)),
+    async ({ ticker, limit, offset }) => {
+      const params: Record<string, string> = {};
+      if (limit !== undefined) params.limit = String(limit);
+      if (offset !== undefined) params.offset = String(offset);
+      return toolHandler(() =>
+        client.get(`/intelligence/${encodeURIComponent(ticker)}/insiders`, params),
+      );
+    },
   );
 
   server.registerTool(
@@ -93,16 +118,32 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
       description:
         'Get unified ownership breakdown for a company combining Form 4 insider holdings, ' +
         '13F institutional holdings, and 13D/13G activist positions. All entities are resolved ' +
-        'across the three SEC form types into a single view with counterparty resolution.',
+        'across the three SEC form types into a single view with counterparty resolution. ' +
+        'The allHolders array is paginated via limit/offset (default 100). Aggregate stats ' +
+        '(institutional/insider/beneficial/retail totals and percentages) are always included in full.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
+        limit: z.number().int().min(1).max(100)
+          .optional()
+          .describe('Maximum holders to return in allHolders (default: 100, max: 100)'),
+        offset: z.number().int().min(0)
+          .optional()
+          .describe('Offset for pagination (default: 0)'),
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ ticker }) =>
-      toolHandler(() => client.get(`/intelligence/${encodeURIComponent(ticker)}/ownership`)),
+    async ({ ticker, limit, offset }) => {
+      const params: Record<string, string> = {};
+      if (limit !== undefined) params.limit = String(limit);
+      if (offset !== undefined) params.offset = String(offset);
+      return toolHandler(() =>
+        client.get(`/intelligence/${encodeURIComponent(ticker)}/ownership`, params),
+      );
+    },
   );
 
+  // DISABLED: get_rofr_triggers — abandoned legacy (Dec 2025); alerting HALTED 2026-05-05, returns empty
+  /*
   server.registerTool(
     'get_rofr_triggers',
     {
@@ -115,8 +156,8 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
         'Results include confidence scoring (high/medium/low) based on time gap.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
-        limit: z.number().min(1).max(200).optional().describe(
-          'Maximum results to return (default: 50, max: 200)',
+        limit: z.number().min(1).max(100).optional().describe(
+          'Maximum results to return (default: 20, max: 100)',
         ),
         offset: z.number().min(0).optional().describe(
           'Pagination offset (default: 0)',
@@ -125,14 +166,14 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
       annotations: { readOnlyHint: true },
     },
     async ({ ticker, limit, offset }) => {
-      const params: Record<string, string> = {};
-      if (limit !== undefined) params.limit = String(limit);
+      const params: Record<string, string> = { limit: String(limit ?? 20) };
       if (offset !== undefined) params.offset = String(offset);
       return toolHandler(() =>
         client.get(`/intelligence/${encodeURIComponent(ticker)}/rofr`, params),
       );
     },
   );
+  */
 
   // ── Phase 3 Tools ──────────────────────────────────────────────
 
@@ -146,11 +187,20 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
         'and filing dates. Useful for understanding institutional ownership concentration.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
+        limit: z.number().min(1).max(100).optional().describe(
+          'Maximum results to return (default: 20, max: 100)',
+        ),
+        offset: z.number().min(0).optional().describe(
+          'Offset for pagination (default: 0)',
+        ),
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ ticker }) =>
-      toolHandler(() => client.get(`/intelligence/${encodeURIComponent(ticker)}/institutions`)),
+    async ({ ticker, limit, offset }) => {
+      const queryParams: Record<string, string> = { limit: String(limit ?? 20) };
+      if (offset !== undefined) queryParams.offset = String(offset);
+      return toolHandler(() => client.get(`/intelligence/${encodeURIComponent(ticker)}/institutions`, queryParams));
+    },
   );
 
   server.registerTool(
@@ -166,8 +216,10 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ cik }) =>
-      toolHandler(() => client.get(`/intelligence/institution/${encodeURIComponent(cik)}`)),
+    async ({ cik }) => {
+      const cleanCik = cik.replace(/\D/g, '');
+      return toolHandler(() => client.get(`/intelligence/institution/${encodeURIComponent(cleanCik)}`));
+    },
   );
 
   server.registerTool(
@@ -180,8 +232,8 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
         'for institutions with large portfolios.',
       inputSchema: z.object({
         cik: z.string().describe('SEC CIK number of the institution'),
-        limit: z.number().min(1).max(500).optional().describe(
-          'Maximum results to return (default: 50, max: 500)',
+        limit: z.number().min(1).max(100).optional().describe(
+          'Maximum results to return (default: 20, max: 100)',
         ),
         offset: z.number().min(0).optional().describe(
           'Offset for pagination (default: 0)',
@@ -190,13 +242,172 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
       annotations: { readOnlyHint: true },
     },
     async ({ cik, limit, offset }) => {
-      const queryParams: Record<string, string> = {};
-      if (limit !== undefined) queryParams.limit = String(limit);
+      const cleanCik = cik.replace(/\D/g, '');
+      const queryParams: Record<string, string> = { limit: String(limit ?? 20) };
       if (offset !== undefined) queryParams.offset = String(offset);
-      return toolHandler(() => client.get(`/intelligence/institution/${encodeURIComponent(cik)}/holdings`, queryParams));
+      return toolHandler(() => client.get(`/intelligence/institution/${encodeURIComponent(cleanCik)}/holdings`, queryParams));
     },
   );
 
+  server.registerTool(
+    'get_institution_position_changes',
+    {
+      title: 'Get Institution Position Changes',
+      description:
+        'Diff two quarterly 13F snapshots for an institution. Compares the latest filing ' +
+        'against the prior quarter and returns per-position changes: new positions, increased, ' +
+        'decreased, and exited. Sorted by |changePercent| descending so the biggest moves ' +
+        'surface first. Much more efficient than calling get_institution_holdings twice and ' +
+        'diffing client-side — the server computes everything in a single SQL query.',
+      inputSchema: z.object({
+        cik: z.string().describe('SEC CIK number of the institution (e.g., "0001067983" for Berkshire Hathaway)'),
+        limit: z.number().int().min(1).max(100).default(50).optional().describe(
+          'Maximum results to return (default: 50, max: 100)',
+        ),
+        offset: z.number().int().min(0).optional().describe(
+          'Offset for pagination (default: 0)',
+        ),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ cik, limit, offset }) => {
+      const cleanCik = cik.replace(/\D/g, '');
+      const queryParams: Record<string, string> = {};
+      if (limit !== undefined) queryParams.limit = String(limit);
+      if (offset !== undefined) queryParams.offset = String(offset);
+      return toolHandler(() => client.get(`/intelligence/institution/${encodeURIComponent(cleanCik)}/position-changes`, queryParams));
+    },
+  );
+
+  // ── Institution analytics (task-2026 public routes) ────────────────
+
+  server.registerTool(
+    'get_institution_activity',
+    {
+      title: 'Get Institution Activity',
+      description:
+        'Get an institution\'s position changes over recent 13F periods by CIK. Reads the ' +
+        'number of trailing periods to include.',
+      inputSchema: z.object({
+        cik: z.string().describe('SEC CIK number of the institution'),
+        periods: z.number().min(1).max(12).optional().describe(
+          'Number of trailing quarters to include (default: 4, max: 12)',
+        ),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ cik, periods }) => {
+      const cleanCik = cik.replace(/\D/g, '');
+      const queryParams: Record<string, string> = {};
+      if (periods !== undefined) queryParams.periods = String(periods);
+      return toolHandler(() =>
+        client.get(`/intelligence/institution/${encodeURIComponent(cleanCik)}/activity`, queryParams),
+      );
+    },
+  );
+
+  server.registerTool(
+    'get_institution_filings',
+    {
+      title: 'Get Institution Filings',
+      description:
+        'Get the list of 13F filings for an institution by CIK, with pagination.',
+      inputSchema: z.object({
+        cik: z.string().describe('SEC CIK number of the institution'),
+        limit: z.number().min(1).max(50).optional().describe(
+          'Maximum results to return (default: 20, max: 50)',
+        ),
+        offset: z.number().min(0).optional().describe('Offset for pagination (default: 0)'),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ cik, limit, offset }) => {
+      const cleanCik = cik.replace(/\D/g, '');
+      const queryParams: Record<string, string> = {};
+      if (limit !== undefined) queryParams.limit = String(limit);
+      if (offset !== undefined) queryParams.offset = String(offset);
+      return toolHandler(() =>
+        client.get(`/intelligence/institution/${encodeURIComponent(cleanCik)}/filings`, queryParams),
+      );
+    },
+  );
+
+  server.registerTool(
+    'get_institution_derivatives',
+    {
+      title: 'Get Institution Derivatives',
+      description:
+        'Get an institution\'s reported PUT/CALL derivative positions by CIK (13F options), ' +
+        'with pagination and sorting.',
+      inputSchema: z.object({
+        cik: z.string().describe('SEC CIK number of the institution'),
+        period: z.string().optional().describe('Filing period to filter (e.g., "2025-Q1")'),
+        limit: z.number().min(1).max(100).optional().describe(
+          'Maximum results to return (default: 20)',
+        ),
+        offset: z.number().min(0).optional().describe('Offset for pagination (default: 0)'),
+        sortBy: z.string().optional().describe('Column to sort by'),
+        sortOrder: z.enum(['asc', 'desc']).optional().describe('Sort direction'),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ cik, ...rest }) => {
+      const cleanCik = cik.replace(/\D/g, '');
+      const queryParams: Record<string, string> = {};
+      for (const [key, value] of Object.entries(rest)) {
+        if (value !== undefined) {
+          queryParams[key] = String(value);
+        }
+      }
+      return toolHandler(() =>
+        client.get(`/intelligence/institution/${encodeURIComponent(cleanCik)}/derivatives`, queryParams),
+      );
+    },
+  );
+
+  server.registerTool(
+    'get_institution_portfolio_analytics',
+    {
+      title: 'Get Institution Portfolio Analytics',
+      description:
+        'Get sector allocation and top holdings analytics for an institution\'s portfolio by CIK.',
+      inputSchema: z.object({
+        cik: z.string().describe('SEC CIK number of the institution'),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ cik }) => {
+      const cleanCik = cik.replace(/\D/g, '');
+      return toolHandler(() =>
+        client.get(`/intelligence/institution/${encodeURIComponent(cleanCik)}/portfolio-analytics`),
+      );
+    },
+  );
+
+  server.registerTool(
+    'get_institutions_leaderboards',
+    {
+      title: 'Get Institution Leaderboards',
+      description:
+        'Two market-wide institution leaderboards in one call: topByAum (largest holders by ' +
+        'assets under management, name-deduped) and mostActive (highest 13F position-change ' +
+        'volume). No CIK required. For the full paginated AUM list use get_institution_top_aum.',
+      inputSchema: z.object({
+        limit: z.number().min(1).max(50).optional().describe(
+          'Maximum results per section (default: 10, max: 50)',
+        ),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ limit }) => {
+      const queryParams: Record<string, string> = {};
+      if (limit !== undefined) queryParams.limit = String(limit);
+      return toolHandler(() => client.get('/intelligence/institutions/discovery', queryParams));
+    },
+  );
+
+  // DISABLED (remove per QA 2026-06-15)
+  /*
   server.registerTool(
     'get_banks',
     {
@@ -213,7 +424,10 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
     async ({ ticker }) =>
       toolHandler(() => client.get(`/intelligence/${encodeURIComponent(ticker)}/banks`)),
   );
+  */
 
+  // DISABLED: get_legal_counsels — part of the dropped legal-counsels feature (page disabled for months)
+  /*
   server.registerTool(
     'get_legal_counsels',
     {
@@ -230,6 +444,7 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
     async ({ ticker }) =>
       toolHandler(() => client.get(`/intelligence/${encodeURIComponent(ticker)}/legal-counsels`)),
   );
+  */
 
   server.registerTool(
     'get_insider_transactions',
@@ -238,22 +453,35 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
       description:
         'Get detailed insider transaction history for a company from Form 4 filings. Returns individual ' +
         'buy/sell transactions with insider name, title, shares, price, and transaction codes. ' +
-        'Supports pagination for companies with extensive insider activity.',
+        'Supports pagination for companies with extensive insider activity. Filter by year/month ' +
+        'to narrow results, or use transactionCode to find only purchases (P), sales (S), etc. ' +
+        'Useful for identifying "first insider buy since X" patterns.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
-        limit: z.number().min(1).max(500).optional().describe(
-          'Maximum results to return (default: 50, max: 500)',
+        limit: z.number().min(1).max(100).optional().describe(
+          'Maximum results to return (default: 20, max: 100)',
         ),
         offset: z.number().min(0).optional().describe(
           'Offset for pagination (default: 0)',
         ),
+        year: z.number().int().min(2000).max(2100).optional().describe(
+          'Filter by transaction year (e.g., 2025)',
+        ),
+        month: z.number().int().min(1).max(12).optional().describe(
+          'Filter by transaction month (1-12, requires year)',
+        ),
+        transactionCode: z.string().length(1).regex(/^[A-Z]$/).optional().describe(
+          'Filter by SEC transaction code: P=Purchase, S=Sale, A=Grant/Award, M=Exercise/Conversion, F=Tax withholding, G=Gift, C=Conversion, W=Will, D=Disposition to issuer, etc.',
+        ),
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ ticker, limit, offset }) => {
-      const queryParams: Record<string, string> = {};
-      if (limit !== undefined) queryParams.limit = String(limit);
+    async ({ ticker, limit, offset, year, month, transactionCode }) => {
+      const queryParams: Record<string, string> = { limit: String(limit ?? 20) };
       if (offset !== undefined) queryParams.offset = String(offset);
+      if (year !== undefined) queryParams.year = String(year);
+      if (month !== undefined) queryParams.month = String(month);
+      if (transactionCode !== undefined) queryParams.transactionCode = transactionCode;
       return toolHandler(() => client.get(`/intelligence/${encodeURIComponent(ticker)}/insider-transactions`, queryParams));
     },
   );
@@ -284,13 +512,9 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
       description:
         'Discover top institutional holders across the entire company universe ranked by assets under ' +
         'management (AUM). Unlike get_ownership which shows institutions for a single company, this tool ' +
-        'searches across all companies to find the largest institutional players. Optionally filter by ' +
-        'sector to find top institutions in a specific industry. Useful for identifying smart money flows ' +
-        'and major institutional positioning trends.',
+        'searches across all companies to find the largest institutional players. Optionally set a ' +
+        'minimum AUM. Useful for identifying smart money flows and major institutional positioning trends.',
       inputSchema: z.object({
-        sector: z.string().optional().describe(
-          'Filter by sector (e.g., "Healthcare", "Technology"). Omit for all sectors.',
-        ),
         minAum: z.number().optional().describe(
           'Minimum AUM in USD to filter institutions (e.g., 1000000000 for $1B+)',
         ),
@@ -314,6 +538,41 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
     },
   );
 
+  server.registerTool(
+    'search_institutions',
+    {
+      title: 'Search Institutions by Name',
+      description:
+        'Search institutional investors (13F filers) by name. Returns matching institutions with CIK, ' +
+        'name, AUM, holdings count, and latest filing period. Use this to find a specific fund or ' +
+        'investment manager when you know part of their name (e.g., "Vanguard", "BlackRock", "Citadel"). ' +
+        'Results are ranked by AUM descending.',
+      inputSchema: z.object({
+        q: z.string().min(2).describe(
+          'Search term (min 2 characters, e.g., "Vanguard", "BlackRock")',
+        ),
+        limit: z.number().min(1).max(100).optional().describe(
+          'Maximum results to return (default: 25, max: 100)',
+        ),
+        offset: z.number().min(0).optional().describe(
+          'Offset for pagination (default: 0)',
+        ),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async (params) => {
+      const queryParams: Record<string, string> = {};
+      for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined) {
+          queryParams[key] = String(value);
+        }
+      }
+      return toolHandler(() => client.get('/intelligence/institutions/search', queryParams));
+    },
+  );
+
+  // DISABLED: get_counsel_cross_company — part of the dropped legal-counsels feature
+  /*
   server.registerTool(
     'get_counsel_cross_company',
     {
@@ -350,6 +609,7 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
       return toolHandler(() => client.get('/intelligence/counsel/cross-company', queryParams));
     },
   );
+  */
 
   server.registerTool(
     'get_insider_cross_company',
@@ -375,7 +635,7 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
           'End date for transaction range in ISO format (e.g., "2025-12-31")',
         ),
         limit: z.number().min(1).max(100).optional().describe(
-          'Maximum results to return (default: 25, max: 100)',
+          'Maximum results to return (default: 10, max: 100)',
         ),
         offset: z.number().min(0).optional().describe(
           'Offset for pagination (default: 0)',
@@ -390,6 +650,7 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
           queryParams[key] = String(value);
         }
       }
+      if (!queryParams.limit) queryParams.limit = '10';
       return toolHandler(() => client.get('/intelligence/insiders/cross-company', queryParams));
     },
   );

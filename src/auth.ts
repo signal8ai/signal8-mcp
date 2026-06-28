@@ -101,7 +101,7 @@ export function getApiKeyFromEnv(): string {
   if (!apiKey) {
     throw new Error(
       'SIGNAL8_API_KEY environment variable is required. ' +
-      'Get your API key at https://signal8.com/settings/api-keys',
+      'Get your API key at https://signal8.ai/settings/api-keys',
     );
   }
   return apiKey;

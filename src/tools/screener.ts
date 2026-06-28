@@ -1,20 +1,21 @@
 /**
  * Screener MCP Tools
  *
- * Tools for screening companies using dilution-aware filters.
- * - screen_companies: Filter companies by dilution score, sector, market cap, etc.
+ * Tools for screening companies by price, volume, float, shares, and market cap.
+ * - screen_companies: Filter companies by price, volume, cash runway, float, market cap, etc.
  * - get_screener_fields: Available screener field metadata for building queries
+ *
+ * NOTE: dilution filters (dilution_risk, hasWarrants/hasConvertibles/hasActiveShelf/
+ * hasActiveAtm, rofr_status) are intentionally NOT exposed here — dilution is a
+ * dead/unreliable feature and must not ship via the public API/MCP. The backend
+ * /screener route still supports those params (the live /companies dilution tab
+ * uses them), they are simply not advertised or accepted through this tool.
  */
 
 import { z } from 'zod/v4';
 import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Signal8ApiClient } from '../api-client.js';
 import { toolHandler } from './tool-handler.js';
-
-/**
- * Boolean filter param names that need conversion from JS boolean to 'true'/'false' strings.
- */
-const BOOLEAN_PARAMS = new Set(['hasWarrants', 'hasConvertibles', 'hasActiveShelf', 'hasActiveAtm']);
 
 /**
  * Register screener tools on the MCP server.
@@ -29,21 +30,13 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
     {
       title: 'Screen Companies',
       description:
-        'Screen companies using dilution-aware filters. Filter by price range, volume, ' +
-        'dilution risk level, cash runway, warrants, convertibles, active shelf registrations, ' +
-        'active ATM programs, float, shares outstanding, market cap, industry, ROFR status, ' +
-        'and float data source. Sort results by any sortable column. Returns matching companies ' +
-        'with key metrics and pagination.',
+        'Screen companies by price range, volume, cash runway, float, shares outstanding, ' +
+        'market cap, industry, and float data source. Sort results by any sortable column. ' +
+        'Returns matching companies with key metrics and pagination.',
       inputSchema: z.object({
         // Text / enum filters
         industry: z.string().optional().describe(
           'Filter by company industry (exact match, e.g. "Biotechnology", "Software")',
-        ),
-        rofr_status: z.string().optional().describe(
-          'Filter by ROFR status (active, expiring-30d, expiring-90d, expired, none)',
-        ),
-        dilution_risk: z.enum(['low', 'medium', 'high', 'critical']).optional().describe(
-          'Filter by dilution risk level',
         ),
 
         // Numeric range filters - price
@@ -68,20 +61,6 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
         ),
         maxCashRunway: z.number().optional().describe(
           'Maximum estimated months of cash remaining',
-        ),
-
-        // Boolean filters
-        hasWarrants: z.boolean().optional().describe(
-          'Filter for companies with outstanding warrants (true) or without (false)',
-        ),
-        hasConvertibles: z.boolean().optional().describe(
-          'Filter for companies with convertible securities (true) or without (false)',
-        ),
-        hasActiveShelf: z.boolean().optional().describe(
-          'Filter for companies with an active shelf registration (true) or without (false)',
-        ),
-        hasActiveAtm: z.boolean().optional().describe(
-          'Filter for companies with an active ATM offering program (true) or without (false)',
         ),
 
         // Numeric range filters - float
@@ -116,7 +95,7 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
         // Sorting
         sortBy: z.enum([
           'ticker', 'price', 'change_percent', 'volume', 'industry',
-          'dilution_risk', 'cash_runway_months', 'shares_outstanding',
+          'cash_runway_months', 'shares_outstanding',
           'computed_float', 'market_cap_computed', 'updated_at',
         ]).optional().describe(
           'Column to sort results by (default: volume)',
@@ -139,13 +118,7 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
       const queryParams: Record<string, string> = {};
       for (const [key, value] of Object.entries(params)) {
         if (value !== undefined) {
-          // Boolean params must be sent as 'true'/'false' strings since
-          // the backend screenerQuerySchema expects z.enum(['true', 'false'])
-          if (BOOLEAN_PARAMS.has(key)) {
-            queryParams[key] = value ? 'true' : 'false';
-          } else {
-            queryParams[key] = String(value);
-          }
+          queryParams[key] = String(value);
         }
       }
       return toolHandler(() => client.get('/screener', queryParams));
@@ -153,6 +126,8 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
   );
 
   // Tool: get_screener_fields
+  // DISABLED (remove per QA 2026-06-15)
+  /*
   server.registerTool(
     'get_screener_fields',
     {
@@ -160,12 +135,13 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
       description:
         'Get available screener field metadata. Returns field names, data types, descriptions, ' +
         'and whether each field is filterable. Useful for dynamically building filter queries ' +
-        'for the screen_companies tool. Includes fields like price, volume, dilution_risk, ' +
-        'cash_runway_months, has_warrants, has_convertibles, market_cap_computed, and more.',
+        'for the screen_companies tool. Includes fields like price, volume, cash_runway_months, ' +
+        'computed_float, shares_outstanding, and market_cap_computed.',
       inputSchema: z.object({}),
       annotations: { readOnlyHint: true },
     },
     async () =>
       toolHandler(() => client.get('/screener/fields')),
   );
+  */
 }

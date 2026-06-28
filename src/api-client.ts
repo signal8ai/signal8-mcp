@@ -16,7 +16,7 @@ export interface ApiError {
 }
 
 export interface ApiClientConfig {
-  /** Base URL of the Signal8 API (e.g., "https://api.signal8.com" or "http://localhost:7000") */
+  /** Base URL of the Signal8 API (e.g., "https://api.signal8.ai/api/v1/public" or "http://localhost:7000") */
   baseUrl: string;
   /** API key (sk_live_xxx or sk_test_xxx) */
   apiKey: string;

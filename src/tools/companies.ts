@@ -49,21 +49,24 @@ export function registerCompanyTools(server: McpServer, client: Signal8ApiClient
       })),
   );
 
+  // DISABLED (review 2026-06-13): bundle returns too much in one call — cheap-scrape vector.
+  // Parked for now pending a decision on metering/limiting. Re-enable when scoped.
+  /*
   // Tool 13: get_company_bundle
   server.registerTool(
     'get_company_bundle',
     {
       title: 'Get Company Bundle',
       description:
-        'Get all available data for a company in a single call. Returns extractions, ' +
-        'dilution risk, instruments, financial data, and more. This is the most comprehensive ' +
+        'Get all available data for a company in a single call. Returns financials, earnings, ' +
+        'holdings, ownership, insider trading, analyst data, and more. This is the most comprehensive ' +
         'but also the most expensive tool (25 credits). Use targeted tools when you only need specific data.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
         include: z.string().optional().describe(
           'Comma-separated list of data types to include. ' +
-          'Available: extractions,dilution,instruments,earnings,holdings,financials,' +
-          'directors,executives,insider-trading,analyst,ownership,ib6,dilution-performance,profile,stock-summary',
+          'Available: earnings,holdings,financials,directors,executives,' +
+          'insider-trading,analyst,ownership,profile,stock-summary',
         ),
       }),
       annotations: { readOnlyHint: true },
@@ -73,6 +76,7 @@ export function registerCompanyTools(server: McpServer, client: Signal8ApiClient
         ...(include ? { include } : {}),
       })),
   );
+  */
 
   // Tool: get_company_profile
   server.registerTool(
