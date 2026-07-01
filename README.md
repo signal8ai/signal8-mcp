@@ -26,7 +26,7 @@ npx @signal8ai/mcp
 
 ### 1. Get your API key
 
-Sign up at [signal8.ai/developer](https://signal8.ai/developer) and create a key at [signal8.ai/settings/api-keys](https://signal8.ai/settings/api-keys) to get your API key.
+Sign up at [signal8.ai/mcp](https://signal8.ai/mcp) and create a key at [signal8.ai/settings/api-keys](https://signal8.ai/settings/api-keys) to get your API key.
 
 ### 2. Configure your MCP client
 

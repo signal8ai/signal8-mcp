@@ -1,11 +1,17 @@
 /**
  * MCP Server Integration Tests
  *
- * Verifies that all 129 tools, 4 prompts, and 2 resources are registered
+ * Verifies that all 86 tools, 4 prompts, and 2 resources are registered
  * correctly with proper metadata, annotations, and handler behavior.
  */
 
 import { describe, it, expect, beforeAll, vi } from 'vitest';
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-expect-error -- SDK internal subpath, not in the package's public types
+import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-expect-error -- SDK internal subpath, not in the package's public types
+import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { registerAllTools } from '../tools/index.js';
 import { registerAllResources } from '../resources/index.js';
 import { registerAllPrompts } from '../prompts/index.js';
@@ -13,170 +19,97 @@ import { CapturingServer, createMockClient, type CapturedTool } from './helpers.
 
 /* ── Expected registrations ───────────────────────────────────────── */
 
+// Authoritative set of tools registered at runtime (86). Derived by running
+// registerAllTools() and confirmed byte-for-byte against the live
+// mcp.signal8.ai tools/list. Keep sorted; the count + "no unexpected tools"
+// assertions below guard drift.
 const EXPECTED_TOOLS = [
-  // Companies (3)
-  'search_companies',
-  'get_company_bundle',
-  'get_company_profile',
-  // Company Data — Market (4)
-  'get_quote',
-  'get_market_metrics',
-  'get_short_interest',
-  'get_float',
-  // Company Data — Fundamentals (3)
-  'get_financials',
-  'get_earnings',
-  'get_executives',
-  // Company Data — Research (4)
-  'get_peers',
-  'get_transcripts',
-  'get_news',
+  'get_accumulation_snapshot',
   'get_analyst_consensus',
-  // Company Data — Events (2)
-  'get_material_events',
+  'get_analyst_coverage',
+  'get_analyst_estimates',
+  'get_analyst_grades',
+  'get_cash_history',
+  'get_cash_position',
+  'get_cash_runway_calendar',
   'get_clinical_trials',
-  // Market — Cross-ticker (5)
-  'get_quotes_batch',
-  'get_quotes_universe',
-  'get_index_snapshot',
-  'get_sector_etf_snapshot',
-  'get_top_movers',
-  'get_market_breadth',
-  // Calendar (6)
+  'get_company_profile',
+  'get_compliance',
+  'get_donor_aggregates',
+  'get_earnings',
   'get_earnings_calendar',
   'get_economic_calendar',
-  'get_filing_calendar',
-  'get_lockup_expirations',
-  'get_post_earnings_movers',
-  'get_recent_material_filings',
-  // Extractions (4)
-  'get_extractions',
-  'get_filing_extractions',
-  'get_extraction_dashboard',
-  'get_extraction_by_type',
-  // Dilution (3)
-  'get_dilution_risk',
-  'get_dilution_performance',
-  'get_baby_shelf',
-  // Intelligence — Per-company (12)
-  'get_counterparties',
-  'get_counsel',
-  'get_insiders',
-  'get_ownership',
-  'get_rofr_triggers',
-  'get_institutions',
-  'get_institution_detail',
-  'get_institution_holdings',
-  'get_institution_position_changes',
-  'get_banks',
-  'get_legal_counsels',
-  'get_insider_transactions',
-  'get_insider_cluster_buys',
-  // Intelligence — Cross-company (4)
-  'get_institution_top_aum',
-  'get_counsel_cross_company',
-  'get_insider_cross_company',
-  'search_institutions',
-  // Compliance (4)
-  'get_compliance',
-  'get_deficiencies',
-  'get_compliance_alerts',
-  'get_listing_classification',
-  // Screener (2)
-  'screen_companies',
-  'get_screener_fields',
-  // Events/ATM/Splits (3)
-  'get_events',
-  'get_atm_activity',
-  'get_split_history',
-  // ETF (1)
   'get_etf_bundle',
-  // Politicians (10)
-  'get_politicians',
-  'get_politician_detail',
-  'get_politician_transactions',
-  'get_politician_activity',
-  'get_politicians_most_active',
-  'get_politician_recent_trades',
-  'get_politician_late_filers',
-  'get_politician_committees',
-  'get_politician_sponsored_bills',
-  'get_politician_votes',
-  // Cash Position (6)
-  'get_cash_position',
-  'get_cash_history',
-  'screen_must_raise',
-  'get_burn_rate_comparison',
-  'get_offerings_since_anchor',
-  'get_cash_runway_calendar',
-  // EDGAR (10)
-  'screen_sec_filings',
-  'screen_sec_filings_performance',
-  'search_sec_filings',
+  'get_executives',
+  'get_exhibit_content',
+  'get_filing_calendar',
   'get_filing_document',
   'get_filing_exhibits',
-  'get_exhibit_content',
-  'get_exhibit_ai_extractions',
-  'search_filing_text',
-  'lookup_accession_number',
-  'get_edgar_companies',
-  // Intraday (3)
-  'get_intraday_bars',
-  'get_volume_profile',
-  'get_accumulation_snapshot',
-  // Market — Top Performers (1)
-  'get_top_performers',
-  // Analyst Estimates (1)
-  'get_analyst_estimates',
-  // Stock Price Change (1)
-  'get_stock_price_change',
-  // Historical Prices (1)
+  'get_financials',
+  'get_float',
   'get_historical_prices',
-  // Macro (3)
-  'get_eia_petroleum',
-  'get_commodity_alerts',
-  'get_macro_feed',
-  // Politicians — P&L/votes/by-ticker (5)
-  'get_politician_pnl',
-  'get_politicians_pnl_leaderboard',
-  'get_politician_roles',
-  'get_recent_congressional_votes',
-  'get_senate_trades_by_ticker',
-  // Politicians — discovery (restored in d07eebe53d, manifest synced in task-2179) (4)
-  'get_recently_sponsored_bills',
-  'get_trending_politicians',
-  'get_political_sector_rotation',
-  'get_cross_politician_donor_trade_overlap',
-  // Insider Positions (2)
+  'get_insider_cluster_buys',
+  'get_insider_cross_company',
   'get_insider_positions',
   'get_insider_positions_by_ticker',
-  // Executive Trades (1)
-  'get_executive_trades',
-  // Intelligence — Institution analytics (5)
+  'get_insider_transactions',
+  'get_insiders',
   'get_institution_activity',
-  'get_institution_filings',
   'get_institution_derivatives',
+  'get_institution_detail',
+  'get_institution_filings',
+  'get_institution_holdings',
   'get_institution_portfolio_analytics',
-  'get_institutions_discovery',
-  // Analyst (3)
-  'get_analyst_grades',
-  'get_price_target',
-  'get_analyst_coverage',
-  // Clinical Trials — market-wide (1)
-  'search_clinical_trials',
-  // Politicians — Donors (FEC) (4)
-  'get_politician_donors',
-  'get_politician_donor_summary',
-  'get_donor_aggregates',
-  'get_donor_trade_overlap',
-  // Policy Events — overlap (feature-2175) (3)
-  'get_policy_events',
-  'get_policy_trade_overlap',
-  'get_policy_trade_leaderboard',
-  // Floor Intelligence — legislative catalyst calendar (3)
+  'get_institution_position_changes',
+  'get_institution_top_aum',
+  'get_institutions',
+  'get_institutions_leaderboards',
+  'get_intraday_bars',
   'get_legislative_calendar',
-  'get_bill_impact',
-  'get_politician_upcoming_bills',
+  'get_market_breadth',
+  'get_market_metrics',
+  'get_news',
+  'get_ownership',
+  'get_policy_events',
+  'get_policy_trade_leaderboard',
+  'get_policy_trade_overlap',
+  'get_political_sector_rotation',
+  'get_politician_activity',
+  'get_politician_committees',
+  'get_politician_detail',
+  'get_politician_donor_summary',
+  'get_politician_donors',
+  'get_politician_late_filers',
+  'get_politician_pnl',
+  'get_politician_recent_trades',
+  'get_politician_roles',
+  'get_politician_transactions',
+  'get_politician_votes',
+  'get_politicians',
+  'get_politicians_most_active',
+  'get_politicians_pnl_leaderboard',
+  'get_post_earnings_movers',
+  'get_price_target',
+  'get_quote',
+  'get_recent_congressional_votes',
+  'get_recent_material_filings',
+  'get_recently_sponsored_bills',
+  'get_senate_trades_by_ticker',
+  'get_short_interest',
+  'get_split_history',
+  'get_stock_price_change',
+  'get_top_movers',
+  'get_volume_profile',
+  'lookup_accession_number',
+  'screen_companies',
+  'screen_must_raise',
+  'screen_sec_filings',
+  'screen_sec_filings_performance',
+  'search_clinical_trials',
+  'search_companies',
+  'search_filing_text',
+  'search_institutions',
+  'search_sec_filings',
 ] as const;
 
 const EXPECTED_PROMPTS = [
@@ -214,8 +147,8 @@ beforeAll(() => {
 /* ── Tool registration ────────────────────────────────────────────── */
 
 describe('tool registration', () => {
-  it('registers exactly 129 tools', () => {
-    expect(server.tools).toHaveLength(129);
+  it('registers exactly 86 tools', () => {
+    expect(server.tools).toHaveLength(86);
   });
 
   it.each(EXPECTED_TOOLS)('registers tool: %s', (name) => {
@@ -265,6 +198,45 @@ describe('tool registration', () => {
       .map((t) => t.name)
       .filter((n) => n !== n.toLowerCase() || n.includes('-'));
     expect(nonSnake).toEqual([]);
+  });
+});
+
+/* ── Schema richness (Smithery quality score) ─────────────────────── */
+
+describe('schema richness', () => {
+  // Gap 1 — param descriptions must reach the emitted JSON Schema.
+  // Root cause of the prod bug: zod v4 stores .describe() in a per-instance
+  // global registry, so descriptions vanished when the SDK converted schemas
+  // with a different zod copy. zod v3 stores them on `_def` (structural), which
+  // is instance-independent. These two tests guard a .describe() removal AND a
+  // regression back to `import { z } from 'zod/v4'` (which makes _def.description
+  // undefined). NOTE: the cross-instance prod condition itself is proven only by
+  // the post-deploy curl against mcp.signal8.ai, not here (local = single zod).
+  it('Gap 1: param descriptions are structural (_def.description set)', () => {
+    const tool = toolMap.get('search_companies')!;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const shape = (tool.config.inputSchema as any).shape;
+    expect(shape.query?._def?.description).toMatch(/Search query/);
+  });
+
+  it('Gap 1: param descriptions are emitted into the JSON Schema', () => {
+    const tool = toolMap.get('search_companies')!;
+    const obj = normalizeObjectSchema(tool.config.inputSchema);
+    const json = toJsonSchemaCompat(obj, {
+      strictUnions: true,
+      pipeStrategy: 'input',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }) as any;
+    expect(json.properties.query.description).toMatch(/Search query/);
+  });
+
+  // Gap 2 — every exposed tool advertises an outputSchema (injected generically
+  // in registerAllTools). Smithery credits output-schema presence per tool.
+  it('Gap 2: every tool declares an outputSchema', () => {
+    const missing = server.tools
+      .filter((t) => !t.config.outputSchema)
+      .map((t) => t.name);
+    expect(missing).toEqual([]);
   });
 });
 
@@ -338,6 +310,8 @@ describe('tool handler execution', () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed).toEqual(mockData);
     expect(result.isError).toBeUndefined();
+    // Gap 2: success results carry structuredContent wrapping the data as { data }
+    expect(result.structuredContent).toEqual({ data: mockData });
 
     vi.unstubAllGlobals();
   });

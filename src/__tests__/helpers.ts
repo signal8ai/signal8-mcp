@@ -15,6 +15,7 @@ export interface CapturedTool {
     title?: string;
     description?: string;
     inputSchema?: unknown;
+    outputSchema?: unknown;
     annotations?: Record<string, unknown>;
   };
   handler: Function;

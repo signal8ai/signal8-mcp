@@ -5,6 +5,43 @@ All notable changes to the `@signal8ai/mcp` package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] - 2026-06-30
+
+### Fixed
+
+- **Param descriptions now actually emit on the hosted server (follow-up to 0.12.0).**
+  0.12.0 switched tool schemas to `import { z } from 'zod'` so `.describe()`
+  would be structural (v3). That held only while the installed `zod` was 3.x;
+  the dependency since resolved to **zod 4.1.13**, under which bare `'zod'` is the
+  **v4** API on both bun and node — so `.describe()` went back into v4's
+  per-instance registry and descriptions were dropped again when the hosted
+  server (run from source via bun) converted schemas with a different zod copy.
+  Pinned tool schema construction to the explicit **`zod/v3`** subpath, which is a
+  true v3 schema (structural `_def.description`) regardless of the installed zod
+  major. Verified under bun-from-source (the hosted runtime): all 281 params
+  across 86 tools emit descriptions.
+
+## [0.12.0] - 2026-06-28
+
+### Fixed
+
+- **Tool parameter descriptions now appear in the emitted `inputSchema`.** Tool
+  schemas were built with `zod/v4`, which stores `.describe()` text in a
+  per-instance global registry; on the hosted deployment the server's zod copy
+  differed from the SDK's, so every parameter description was dropped from the
+  `tools/list` JSON Schema (enums/min/max survived because they are structural).
+  Switched tool schema construction to zod v3 (`import { z } from 'zod'`), where
+  `.describe()` is stored structurally on the node and survives conversion. No
+  per-tool description edits were needed — they already existed in source.
+
+### Added
+
+- **Output schemas.** Every tool now advertises an `outputSchema` and returns
+  `structuredContent`. Responses are wrapped as `{ data: <result> }`
+  (`z.object({ data: z.unknown() })`) — injected once via the tool registry and
+  the shared `toolHandler`, so all 86 tools are covered without per-tool edits.
+  Improves client structured-output support and MCP-directory quality scoring.
+
 ## [0.8.0] - 2026-05-18
 
 ### Added

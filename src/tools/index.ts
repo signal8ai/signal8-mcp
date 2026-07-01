@@ -52,6 +52,7 @@
  *     get_policy_trade_leaderboard
  */
 
+import { z } from 'zod/v3';
 import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Signal8ApiClient } from '../api-client.js';
 import { registerCompanyTools } from './companies.js';
@@ -90,6 +91,19 @@ import { registerFloorIntelligenceTools } from './floor-intelligence.js';
  * @param server - McpServer instance to register tools on
  * @param client - Authenticated API client for backend calls
  */
+/**
+ * Generic output schema injected onto every tool (see registerAllTools).
+ *
+ * Tool responses vary (objects, arrays, scalars, null), but MCP requires both
+ * the declared `outputSchema` and the returned `structuredContent` to be JSON
+ * objects. So we wrap every response as `{ data: <result> }` — `toolHandler`
+ * emits `structuredContent: { data }` on success, and this schema validates it.
+ * `z.unknown()` accepts any payload, so no tool call can ever fail output
+ * validation. Advertising an outputSchema per tool is what the Smithery quality
+ * score credits; the wrapper avoids editing all 86 registration sites.
+ */
+const GENERIC_OUTPUT_SCHEMA = z.object({ data: z.unknown() });
+
 export function registerAllTools(server: McpServer, client: Signal8ApiClient): void {
   // ---------------------------------------------------------------------------
   // Per-tool disables (QA 2026-06-16). Commented out until their data / upstream
@@ -122,7 +136,17 @@ export function registerAllTools(server: McpServer, client: Signal8ApiClient): v
   (server as { registerTool: (name: string, ...rest: unknown[]) => unknown }).registerTool = (
     name: string,
     ...rest: unknown[]
-  ): unknown => (DISABLED_TOOLS.has(name) ? undefined : originalRegisterTool(name, ...rest));
+  ): unknown => {
+    if (DISABLED_TOOLS.has(name)) return undefined;
+    // Inject the generic outputSchema into the tool config (rest[0]) unless the
+    // tool already declares one, so every exposed tool advertises an output
+    // schema without touching 86 registration sites.
+    const [config, ...others] = rest;
+    if (config && typeof config === 'object' && !('outputSchema' in config)) {
+      (config as Record<string, unknown>).outputSchema = GENERIC_OUTPUT_SCHEMA;
+    }
+    return originalRegisterTool(name, config, ...others);
+  };
 
   registerCompanyTools(server, client);       // search_companies, get_company_bundle, get_company_profile
   registerCompanyDataTools(server, client);   // Phase 2: 13 company data tools

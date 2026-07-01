@@ -8,7 +8,7 @@
  * - get_baby_shelf: IB6 remaining offering capacity
  */
 
-import { z } from 'zod/v4';
+import { z } from 'zod/v3';
 import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Signal8ApiClient } from '../api-client.js';
 import { toolHandler } from './tool-handler.js';

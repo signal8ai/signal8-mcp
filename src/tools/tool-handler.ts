@@ -16,6 +16,14 @@ import { Signal8ApiError } from '../api-client.js';
 interface McpToolResult {
   [key: string]: unknown;
   content: Array<{ type: 'text'; text: string }>;
+  /**
+   * Structured payload mirroring the text content, wrapped as `{ data }` so it
+   * is always a JSON object (MCP requires structuredContent to be an object,
+   * while tool responses may be arrays/scalars). Required by the generic
+   * `outputSchema` injected in tools/index.ts; only set on success (error
+   * results carry `isError` and are exempt from output-schema validation).
+   */
+  structuredContent?: { data: unknown };
   isError?: boolean;
 }
 
@@ -39,6 +47,7 @@ export async function toolHandler<T>(
         type: 'text',
         text: JSON.stringify(data, null, 2),
       }],
+      structuredContent: { data },
     };
   } catch (error: unknown) {
     if (error instanceof Signal8ApiError) {
