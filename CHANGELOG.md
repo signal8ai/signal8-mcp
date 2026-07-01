@@ -5,6 +5,17 @@ All notable changes to the `@signal8ai/mcp` package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.3] - 2026-07-01
+
+### Fixed
+
+- **Exclude test files from the production `tsc` build.** `tsconfig.json` only
+  excluded `src/__tests__`, so `tsc` compiled `src/tools/__tests__/*.test.ts`
+  (which import `vitest`) into `dist/`. That shipped test cruft in the npm
+  package and broke isolated builds where `vitest` isn't installed — e.g. Glama's
+  Docker build test failed with `Cannot find module 'vitest'`. Exclude now covers
+  `src/**/__tests__/**` and `src/**/*.test.ts`. No runtime/tool changes.
+
 ## [0.12.2] - 2026-07-01
 
 ### Changed
