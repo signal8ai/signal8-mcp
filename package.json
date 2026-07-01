@@ -1,7 +1,7 @@
 {
   "name": "@signal8ai/mcp",
   "mcpName": "ai.signal8/mcp",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "description": "Signal8 MCP Server - SEC filing intelligence for AI agents",
   "homepage": "https://signal8.ai/mcp",
   "repository": {

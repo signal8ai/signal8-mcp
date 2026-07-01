@@ -5,6 +5,17 @@ All notable changes to the `@signal8ai/mcp` package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.2] - 2026-07-01
+
+### Changed
+
+- **stdio server starts in discovery-only mode when `SIGNAL8_API_KEY` is unset**
+  instead of throwing at startup. `initialize` / `tools/list` now work without a
+  credential (tool calls still fail closed with the backend's 401), mirroring the
+  HTTP transport's unauth discovery. This lets keyless scanners — e.g. Glama's
+  sandbox build test — introspect the tool catalog without a key. Configs that set
+  the key are unaffected. A one-line stderr warning is printed when no key is set.
+
 ## [0.12.1] - 2026-06-30
 
 ### Fixed
