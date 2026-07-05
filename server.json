@@ -6,9 +6,8 @@
   "version": "0.12.3",
   "websiteUrl": "https://signal8.ai/mcp",
   "repository": {
-    "url": "https://github.com/signal8ai/signal8",
-    "source": "github",
-    "subfolder": "packages/mcp-server"
+    "url": "https://github.com/signal8ai/signal8-mcp",
+    "source": "github"
   },
   "remotes": [
     {
