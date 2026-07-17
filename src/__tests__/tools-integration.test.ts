@@ -1,7 +1,7 @@
 /**
  * MCP Server Integration Tests
  *
- * Verifies that all 86 tools, 4 prompts, and 2 resources are registered
+ * Verifies that all 87 tools, 3 prompts, and 2 resources are registered
  * correctly with proper metadata, annotations, and handler behavior.
  */
 
@@ -19,7 +19,7 @@ import { CapturingServer, createMockClient, type CapturedTool } from './helpers.
 
 /* ── Expected registrations ───────────────────────────────────────── */
 
-// Authoritative set of tools registered at runtime (86). Derived by running
+// Authoritative set of tools registered at runtime (87). Derived by running
 // registerAllTools() and confirmed byte-for-byte against the live
 // mcp.signal8.ai tools/list. Keep sorted; the count + "no unexpected tools"
 // assertions below guard drift.
@@ -99,6 +99,7 @@ const EXPECTED_TOOLS = [
   'get_split_history',
   'get_stock_price_change',
   'get_top_movers',
+  'get_trading_halts',
   'get_volume_profile',
   'lookup_accession_number',
   'screen_companies',
@@ -113,7 +114,6 @@ const EXPECTED_TOOLS = [
 ] as const;
 
 const EXPECTED_PROMPTS = [
-  'analyze_dilution_risk',
   'company_due_diligence',
   'screening_workflow',
   'institutional_analysis',
@@ -147,8 +147,8 @@ beforeAll(() => {
 /* ── Tool registration ────────────────────────────────────────────── */
 
 describe('tool registration', () => {
-  it('registers exactly 86 tools', () => {
-    expect(server.tools).toHaveLength(86);
+  it('registers exactly 87 tools', () => {
+    expect(server.tools).toHaveLength(87);
   });
 
   it.each(EXPECTED_TOOLS)('registers tool: %s', (name) => {
@@ -243,8 +243,8 @@ describe('schema richness', () => {
 /* ── Prompt registration ──────────────────────────────────────────── */
 
 describe('prompt registration', () => {
-  it('registers exactly 4 prompts', () => {
-    expect(server.prompts).toHaveLength(4);
+  it('registers exactly 3 prompts', () => {
+    expect(server.prompts).toHaveLength(3);
   });
 
   it.each(EXPECTED_PROMPTS)('registers prompt: %s', (name) => {

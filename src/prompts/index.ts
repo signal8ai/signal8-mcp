@@ -2,7 +2,6 @@
  * Signal8 MCP Prompts Registry
  *
  * Registers all Signal8 MCP prompts on the server:
- * - analyze_dilution_risk: Multi-step dilution risk analysis template
  * - company_due_diligence: Comprehensive company research and due diligence workflow
  * - screening_workflow: Guided stock screening and drill-down analysis
  * - institutional_analysis: Institutional ownership and smart money flow analysis
@@ -19,8 +18,7 @@ import { type Signal8ApiClient } from '../api-client.js';
  * through multi-tool workflows for complex analysis tasks.
  *
  * Currently registered prompts:
- * - analyze_dilution_risk: 6-step dilution risk analysis
- * - company_due_diligence: 10-step company due diligence research
+ * - company_due_diligence: 9-step company due diligence research
  * - screening_workflow: 5-step discover-screen-analyze workflow
  * - institutional_analysis: 6-step institutional ownership deep dive
  *
@@ -28,54 +26,6 @@ import { type Signal8ApiClient } from '../api-client.js';
  * @param _client - Authenticated API client (reserved for future prompts that may pre-fetch data)
  */
 export function registerAllPrompts(server: McpServer, _client: Signal8ApiClient): void {
-  // Prompt: analyze_dilution_risk
-  // Guides the AI through a 6-step dilution risk analysis workflow
-  server.registerPrompt(
-    'analyze_dilution_risk',
-    {
-      title: 'Analyze Dilution Risk',
-      description:
-        'Comprehensive dilution risk analysis for a company. Guides the AI through ' +
-        'a multi-step analysis using search, dilution risk scoring, instrument analysis, ' +
-        'baby shelf capacity, historical performance, and SEC filing review.',
-      argsSchema: {
-        ticker: z.string().describe('Stock ticker symbol to analyze (e.g., AAPL, TSLA)'),
-      },
-    },
-    ({ ticker }) => ({
-      messages: [
-        {
-          role: 'user' as const,
-          content: {
-            type: 'text' as const,
-            text: [
-              `Perform a comprehensive dilution risk analysis for ${ticker}. Follow these steps:`,
-              '',
-              '1. **Verify Company**: Use search_companies to confirm the ticker exists and get basic info.',
-              '',
-              `2. **Dilution Risk Score**: Use get_dilution_risk for ${ticker} to get the Dilution Pressure Score (0-100) and the 5-dimension qualitative assessment.`,
-              '',
-              `3. **Active Instruments**: Use get_instruments for ${ticker} to see all active warrants, convertible notes, ATM programs, and shelf registrations. Note any that are near exercise/conversion prices.`,
-              '',
-              `4. **Baby Shelf Capacity**: Use get_baby_shelf for ${ticker} to check IB6 remaining capacity. This shows how much more the company can raise under the baby shelf rule.`,
-              '',
-              `5. **Historical Impact**: Use get_dilution_performance for ${ticker} to see how the stock reacted to past dilution events at +1d, +7d, +30d, and +90d.`,
-              '',
-              `6. **Filing Details**: Use get_extractions for ${ticker} to review the latest SEC filing extraction data for warrants, convertibles, and financing terms.`,
-              '',
-              'Based on all of the above, provide:',
-              '- **Overall Risk Level**: Low / Medium / High / Critical with the numeric score',
-              '- **Key Risk Factors**: Top 3-5 specific risks (e.g., "12M warrants at $0.50 exercisable now")',
-              '- **Historical Pattern**: How has the stock typically reacted to dilution?',
-              '- **Upcoming Catalysts**: Any instruments approaching exercise/conversion/expiry dates',
-              '- **Investor Takeaway**: 2-3 sentence summary an investor can act on',
-            ].join('\n'),
-          },
-        },
-      ],
-    }),
-  );
-
   // Prompt: company_due_diligence
   // Guides the AI through a comprehensive due diligence workflow
   server.registerPrompt(
@@ -85,7 +35,7 @@ export function registerAllPrompts(server: McpServer, _client: Signal8ApiClient)
       description:
         'Comprehensive due diligence research for a company. Guides the AI through ' +
         'a multi-step analysis covering company profile, financials, float structure, ' +
-        'dilution risk, compliance status, insider activity, ownership, and recent news/events.',
+        'compliance status, insider activity, ownership, and recent news/events.',
       argsSchema: {
         ticker: z.string().describe('Stock ticker symbol to analyze (e.g., AAPL, TSLA)'),
       },
@@ -109,21 +59,18 @@ export function registerAllPrompts(server: McpServer, _client: Signal8ApiClient)
               '',
               `5. **Float & Share Structure**: Use get_float for ${ticker} to understand the float composition, shares outstanding, institutional ownership percentage, and insider holding percentage.`,
               '',
-              `6. **Dilution Risk Assessment**: Use get_dilution_risk for ${ticker} to get the Dilution Pressure Score (0-100) and qualitative assessment. Then use get_instruments for ${ticker} to see all active warrants, convertible notes, ATM programs, and shelf registrations.`,
+              `6. **Compliance & Listing Risk**: Use get_compliance for ${ticker} to check exchange compliance status and any active deficiency notices. Use get_deficiencies for ${ticker} for detailed deficiency history.`,
               '',
-              `7. **Compliance & Listing Risk**: Use get_compliance for ${ticker} to check exchange compliance status and any active deficiency notices. Use get_deficiencies for ${ticker} for detailed deficiency history.`,
+              `7. **Insider Activity**: Use get_insiders for ${ticker} to see the insider roster. Use get_insider_transactions for ${ticker} to review recent insider buys and sells. Flag any cluster buying or large dispositions.`,
               '',
-              `8. **Insider Activity**: Use get_insiders for ${ticker} to see the insider roster. Use get_insider_transactions for ${ticker} to review recent insider buys and sells. Flag any cluster buying or large dispositions.`,
+              `8. **Institutional Ownership**: Use get_ownership for ${ticker} to see institutional holders, their position sizes, and recent changes (increases vs decreases).`,
               '',
-              `9. **Institutional Ownership**: Use get_ownership for ${ticker} to see institutional holders, their position sizes, and recent changes (increases vs decreases).`,
-              '',
-              `10. **Recent News & Events**: Use get_news for ${ticker} to see the latest headlines. Use get_events for ${ticker} to review recent corporate events (financings, offerings, splits, etc.).`,
+              `9. **Recent News & Events**: Use get_news for ${ticker} to see the latest headlines. Use get_events for ${ticker} to review recent corporate events (financings, offerings, splits, etc.).`,
               '',
               'Based on all of the above, provide a structured due diligence report:',
               '- **Company Overview**: What the company does, sector, market cap, exchange',
               '- **Financial Health**: Revenue trend, cash position, burn rate, debt burden',
               '- **Share Structure**: Float size, insider/institutional ownership breakdown',
-              '- **Dilution Risk**: Score, active instruments, near-term dilution catalysts',
               '- **Compliance Status**: Any listing deficiencies or compliance concerns',
               '- **Insider Sentiment**: Net insider buying/selling, any notable transactions',
               '- **Institutional Interest**: Major holders, recent position changes',
@@ -180,25 +127,24 @@ export function registerAllPrompts(server: McpServer, _client: Signal8ApiClient)
                 '',
                 'Follow these steps in order:',
                 '',
-                '1. **Discover Filters**: Use get_screener_fields to retrieve all available screening filters with their names, types, and valid ranges/options. Present a summary of the most useful filters grouped by category (price/volume, dilution, structure, compliance).',
+                '1. **Discover Filters**: Use get_screener_fields to retrieve all available screening filters with their names, types, and valid ranges/options. Present a summary of the most useful filters grouped by category (price/volume, structure, compliance).',
                 '',
                 '2. **Build & Run Screen**: Based on the available filters (and any user preferences), use screen_companies to run a targeted screen. Start with reasonable defaults:',
-                '   - If no preferences given, suggest a small-cap screen: maxMarketCapComputed under $500M, minVolume of 100000, sorted by dilutionScore descending',
+                '   - If no preferences given, suggest a small-cap screen: maxMarketCapComputed under $500M, minVolume of 100000, sorted by volume descending',
                 '   - Apply any user-provided sector or marketCap filters',
                 '   - Limit to 10-20 results for manageable analysis',
                 '',
-                '3. **Review Results**: Present the screening results in a table format showing ticker, company name, market cap, price, volume, dilution score, and any other relevant columns. Identify the top 3-5 most interesting candidates and explain why.',
+                '3. **Review Results**: Present the screening results in a table format showing ticker, company name, market cap, price, volume, and any other relevant columns. Identify the top 3-5 most interesting candidates and explain why.',
                 '',
                 '4. **Deep Dive Top Picks**: For each of the top 3 candidates:',
                 '   a. Use get_company_bundle to get the consolidated company data',
-                '   b. Use get_dilution_risk to assess dilution exposure',
-                '   c. Use get_compliance to check listing compliance status',
-                '   d. Summarize findings in a comparison table',
+                '   b. Use get_compliance to check listing compliance status',
+                '   c. Summarize findings in a comparison table',
                 '',
                 '5. **Recommendation**: Based on the screening and deep-dive analysis:',
                 '   - Rank the top 3 picks by overall investment attractiveness',
                 '   - Highlight the key differentiator for each',
-                '   - Note any red flags (high dilution, compliance issues, low float)',
+                '   - Note any red flags (compliance issues, low float)',
                 '   - Suggest follow-up analysis for the most promising candidate',
               ].join('\n'),
             },

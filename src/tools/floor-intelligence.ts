@@ -24,9 +24,11 @@ import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Signal8ApiClient } from '../api-client.js';
 import { toolHandler } from './tool-handler.js';
 
-const DATE_PATTERN = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a date in YYYY-MM-DD format');
+// Factory (fresh schema per call) so a `from`/`to` pair never shares one
+// instance — otherwise zod-to-json-schema dedups the second into a typeless
+// `$ref`, which connector-directory linters flag.
+const DATE_PATTERN = () =>
+  z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a date in YYYY-MM-DD format');
 const MIN_RELEVANCE = z.enum(['none', 'low', 'medium', 'high']);
 
 /**
@@ -73,10 +75,10 @@ export function registerFloorIntelligenceTools(
         'minRelevance=low.' +
         FLOOR_INTEL_DISCLAIMER,
       inputSchema: z.object({
-        from: DATE_PATTERN.optional().describe(
+        from: DATE_PATTERN().optional().describe(
           'Earliest vote-window date inclusive (YYYY-MM-DD, default: today)',
         ),
-        to: DATE_PATTERN.optional().describe(
+        to: DATE_PATTERN().optional().describe(
           'Latest vote-window date inclusive (YYYY-MM-DD, default: today + 14 days)',
         ),
         minRelevance: MIN_RELEVANCE.optional().describe(

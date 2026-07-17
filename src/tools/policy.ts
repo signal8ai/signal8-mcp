@@ -25,9 +25,11 @@ import { toolHandler } from './tool-handler.js';
 
 // Reusable schemas — keep in sync with task-2177 backend validation
 // (backend/src/routes/senate-insiders/policy-trade-overlap.ts).
-const DATE_PATTERN = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a date in YYYY-MM-DD format');
+// Factory (fresh schema per call) so a `from`/`to` pair never shares one
+// instance — otherwise zod-to-json-schema dedups the second into a typeless
+// `$ref`, which connector-directory linters flag.
+const DATE_PATTERN = () =>
+  z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a date in YYYY-MM-DD format');
 const DIRECTION = z.enum(['before', 'after', 'both']);
 const LEADERBOARD_SORT = z.enum(['usd', 'count']);
 
@@ -66,10 +68,10 @@ export function registerPolicyTools(server: McpServer, client: Signal8ApiClient)
         'number of official trades that occurred in an affected sector near the signing date.' +
         OVERLAP_DISCLAIMER,
       inputSchema: z.object({
-        from: DATE_PATTERN.optional().describe(
+        from: DATE_PATTERN().optional().describe(
           'Earliest signing date inclusive (YYYY-MM-DD)',
         ),
-        to: DATE_PATTERN.optional().describe(
+        to: DATE_PATTERN().optional().describe(
           'Latest signing date inclusive (YYYY-MM-DD)',
         ),
         sector: z.string().optional().describe(

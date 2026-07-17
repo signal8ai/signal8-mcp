@@ -37,16 +37,15 @@ describe('market tools', () => {
     toolMap = new Map(server.tools.map((t) => [t.name, t]));
   });
 
-  it('registers all 7 market tools', () => {
+  // The batch/universe/snapshot/top-performers tools were block-commented out
+  // in the 2026-06-13 FMP market-data rights review; only these three actually
+  // register. get_trading_halts was added in task-2286 (feature-2260).
+  it('registers the 3 active market tools', () => {
     expect(server.tools.map((t) => t.name).sort()).toEqual(
       [
-        'get_quotes_batch',
-        'get_quotes_universe',
-        'get_index_snapshot',
-        'get_sector_etf_snapshot',
         'get_top_movers',
         'get_market_breadth',
-        'get_top_performers',
+        'get_trading_halts',
       ].sort(),
     );
   });
@@ -60,53 +59,12 @@ describe('market tools', () => {
     }
   });
 
-  it('get_quotes_batch POSTs to /market/quotes with tickers in body', async () => {
-    const tool = toolMap.get('get_quotes_batch')!;
-    await tool.handler({ tickers: ['AAPL', 'MSFT'] });
-    expect(client.post).toHaveBeenCalledWith('/market/quotes', {
-      tickers: ['AAPL', 'MSFT'],
-    });
-    expect(client.get).not.toHaveBeenCalled();
-  });
-
-  it('get_quotes_batch schema rejects empty / oversized arrays and bad types', () => {
-    const schema = toolMap.get('get_quotes_batch')!.config.inputSchema as z.ZodSchema;
-    expect(schema.safeParse({ tickers: [] }).success).toBe(false);
-    expect(schema.safeParse({ tickers: 'AAPL' }).success).toBe(false);
-    expect(schema.safeParse({}).success).toBe(false);
-    expect(schema.safeParse({ tickers: ['AAPL'] }).success).toBe(true);
-    const tooMany = Array.from({ length: 201 }, (_, i) => `T${i}`);
-    expect(schema.safeParse({ tickers: tooMany }).success).toBe(false);
-  });
-
-  it('get_quotes_universe encodes the universe path segment', async () => {
-    const tool = toolMap.get('get_quotes_universe')!;
-    await tool.handler({ universe: 'sp500' });
-    expect(client.get).toHaveBeenCalledWith('/market/quotes/universe/sp500');
-  });
-
-  it('get_quotes_universe schema rejects unknown universes', () => {
-    const schema = toolMap.get('get_quotes_universe')!.config.inputSchema as z.ZodSchema;
-    expect(schema.safeParse({ universe: 'russell' }).success).toBe(false);
-    expect(schema.safeParse({ universe: 'sp500' }).success).toBe(true);
-    expect(schema.safeParse({ universe: 'ndx' }).success).toBe(true);
-    expect(schema.safeParse({ universe: 'dji' }).success).toBe(true);
-  });
-
-  it('get_index_snapshot POSTs the index ETF basket to /market/quotes', async () => {
-    const tool = toolMap.get('get_index_snapshot')!;
-    await tool.handler({});
-    expect(client.post).toHaveBeenCalledWith(
-      '/market/quotes',
-      expect.objectContaining({ tickers: expect.arrayContaining(['SPY', 'QQQ']) }),
-    );
-  });
-
-  it('get_sector_etf_snapshot calls /market/sector-snapshot', async () => {
-    const tool = toolMap.get('get_sector_etf_snapshot')!;
-    await tool.handler({});
-    expect(client.get).toHaveBeenCalledWith('/market/sector-snapshot');
-  });
+  // NOTE: get_quotes_batch / get_quotes_universe / get_index_snapshot /
+  // get_sector_etf_snapshot / get_top_performers are block-commented out in
+  // market.ts (2026-06-13 FMP market-data rights review). Their tests were
+  // removed in task-2286 — they had been silently masked by bail:1 behind the
+  // stale "registers all 7" assertion and referenced tools that no longer
+  // register. Re-add their coverage if/when those tools are re-enabled.
 
   it('get_top_movers builds path + stringified limit param', async () => {
     const tool = toolMap.get('get_top_movers')!;
@@ -235,32 +193,31 @@ describe('market tools', () => {
     }
   });
 
-  /* ── get_top_performers ──────────────────────────────────── */
-
-  it('get_top_performers GETs /market/top-performers/:universe with params', async () => {
-    const tool = toolMap.get('get_top_performers')!;
-    await tool.handler({ universe: 'sp500', period: '1M', limit: 20, direction: 'losers' });
-    expect(client.get).toHaveBeenCalledWith(
-      '/market/top-performers/sp500',
-      { period: '1M', limit: '20', direction: 'losers' },
-    );
+  // ── get_trading_halts (task-2286, feature-2260) ───────────────
+  it('get_trading_halts GETs /trading-halts with no params', async () => {
+    const tool = toolMap.get('get_trading_halts')!;
+    await tool.handler({});
+    expect(client.get).toHaveBeenCalledWith('/trading-halts');
   });
 
-  it('get_top_performers defaults to 1D/10/gainers', async () => {
-    const tool = toolMap.get('get_top_performers')!;
-    const schema = tool.config.inputSchema as z.ZodSchema;
-    const parsed = schema.safeParse({ universe: 'ndx' });
-    expect(parsed.success).toBe(true);
-    if (parsed.success) {
-      const d = parsed.data as { period: string; limit: number; direction: string };
-      expect(d.period).toBe('1D');
-      expect(d.limit).toBe(10);
-      expect(d.direction).toBe('gainers');
-    }
+  it('get_trading_halts: an empty halt list is a success result, not an error', async () => {
+    client.get.mockResolvedValue({ success: true, data: { halts: [], count: 0 } });
+    const result = await toolMap.get('get_trading_halts')!.handler({});
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent.data.data.halts).toEqual([]);
   });
 
-  it('get_top_performers rejects invalid universe', () => {
-    const schema = toolMap.get('get_top_performers')!.config.inputSchema as z.ZodSchema;
-    expect(schema.safeParse({ universe: 'russell' }).success).toBe(false);
+  it('get_trading_halts passes halt rows through untouched (no response mapping)', async () => {
+    const row = {
+      ticker: 'INHD',
+      market: 'NASDAQ',
+      haltCode: 'T12',
+      reason: 'Additional information requested by NASDAQ',
+      haltedAt: '2026-06-30T13:30:00.000Z',
+      resumptionAt: null,
+    };
+    client.get.mockResolvedValue({ success: true, data: { halts: [row], count: 1 } });
+    const result = await toolMap.get('get_trading_halts')!.handler({});
+    expect(result.structuredContent.data.data.halts[0]).toMatchObject(row);
   });
 });

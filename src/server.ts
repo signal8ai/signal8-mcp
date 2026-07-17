@@ -21,7 +21,7 @@ import { registerAllPrompts } from './prompts/index.js';
 const SERVER_INSTRUCTIONS = `Signal8 provides read-only SEC-filing intelligence and market data for US-listed companies, plus US congressional & executive-branch (STOCK Act) trading and FEC campaign-finance data.
 
 Typical workflow:
-- Resolve a company first with \`search_companies\` (name or ticker), then call company tools — \`get_company_profile\`, \`get_quote\`, \`get_financials\`, \`get_dilution_risk\`, \`get_short_interest\`, \`get_float\`, \`get_earnings\`, insider trades (\`get_insiders\`), and institutional/total ownership (\`get_institutions\`, \`get_ownership\`). Most tools take a bare ticker (e.g. "AAPL").
+- Resolve a company first with \`search_companies\` (name or ticker), then call company tools — \`get_company_profile\`, \`get_quote\`, \`get_financials\`, \`get_short_interest\`, \`get_float\`, \`get_earnings\`, insider trades (\`get_insiders\`), and institutional/total ownership (\`get_institutions\`, \`get_ownership\`). Most tools take a bare ticker (e.g. "AAPL").
 - For SEC filing text/exhibits, use the EDGAR tools (\`search_sec_filings\`, \`get_filing_document\`).
 - For political trading use the politician tools (\`get_politicians\`, \`get_politician_transactions\`, \`get_senate_trades_by_ticker\`); for campaign finance use the donor tools.
 

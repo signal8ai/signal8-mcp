@@ -5,6 +5,6 @@
  * (server factory, HTTP/stdio transports, User-Agent header). Keep this
  * value in sync with package.json + server.json when bumping releases.
  */
-export const VERSION = '0.12.3';
+export const VERSION = '0.13.0';
 export const PACKAGE_NAME = '@signal8ai/mcp';
 export const USER_AGENT = `${PACKAGE_NAME}/${VERSION}`;

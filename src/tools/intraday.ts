@@ -28,7 +28,9 @@ export function registerIntradayTools(server: McpServer, client: Signal8ApiClien
       description:
         'Get intraday OHLCV candles at 1, 5, 15, 30, or 60-minute resolution. ' +
         'Use for intraday price action analysis, volume patterns, and short-term ' +
-        'technical analysis. Returns open, high, low, close, and volume for each bar.',
+        'technical analysis. Returns open, high, low, close, and volume for each bar. ' +
+        'Set extended=true (1-minute resolution only) to include premarket ' +
+        '(04:00–09:30 ET) and after-hours (16:00–20:00 ET) bars.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
         resolution: z
@@ -36,15 +38,23 @@ export function registerIntradayTools(server: McpServer, client: Signal8ApiClien
           .describe('Bar resolution in minutes'),
         from: z.number().int().describe('Start time as UNIX timestamp'),
         to: z.number().int().describe('End time as UNIX timestamp'),
+        extended: z
+          .boolean()
+          .optional()
+          .describe(
+            'Include extended-hours bars (premarket 04:00–09:30 ET and after-hours ' +
+            '16:00–20:00 ET). Only supported with resolution "1".',
+          ),
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ ticker, resolution, from, to }) => {
+    async ({ ticker, resolution, from, to, extended }) => {
       const params: Record<string, string> = {
         resolution,
         from: String(from),
         to: String(to),
       };
+      if (extended) params.extended = 'true';
       return toolHandler(() =>
         client.get(`/companies/${encodeURIComponent(ticker)}/candles`, params),
       );

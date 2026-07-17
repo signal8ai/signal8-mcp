@@ -18,10 +18,14 @@ import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Signal8ApiClient } from '../api-client.js';
 import { toolHandler } from './tool-handler.js';
 
-/** ISO date format: YYYY-MM-DD */
-const isoDate = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be ISO YYYY-MM-DD');
+/**
+ * ISO date format: YYYY-MM-DD.
+ * Factory (returns a fresh schema per call) so that a `from`/`to` pair never
+ * shares one schema instance — otherwise zod-to-json-schema dedups the second
+ * into a `$ref` with no `type`, which connector-directory linters flag.
+ */
+const isoDate = () =>
+  z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be ISO YYYY-MM-DD');
 
 /**
  * Register all 6 calendar / material-filings tools on the MCP server.
@@ -38,8 +42,8 @@ export function registerCalendarTools(server: McpServer, client: Signal8ApiClien
         'estimate, and revenue estimate when available. Supports market cap filtering ' +
         'to focus on large-cap or small-cap earnings only.',
       inputSchema: z.object({
-        from: isoDate.describe('Start date inclusive (YYYY-MM-DD)'),
-        to: isoDate.describe('End date inclusive (YYYY-MM-DD)'),
+        from: isoDate().describe('Start date inclusive (YYYY-MM-DD)'),
+        to: isoDate().describe('End date inclusive (YYYY-MM-DD)'),
         tickers: z
           .array(z.string().min(1))
           .optional()
@@ -72,8 +76,8 @@ export function registerCalendarTools(server: McpServer, client: Signal8ApiClien
         'between two dates. Optionally filter to a single country (ISO-3166 alpha-2, ' +
         'e.g. "US"). Defaults to US when omitted.',
       inputSchema: z.object({
-        from: isoDate.describe('Start date inclusive (YYYY-MM-DD)'),
-        to: isoDate.describe('End date inclusive (YYYY-MM-DD)'),
+        from: isoDate().describe('Start date inclusive (YYYY-MM-DD)'),
+        to: isoDate().describe('End date inclusive (YYYY-MM-DD)'),
         country: z
           .string()
           .length(2)
@@ -99,8 +103,8 @@ export function registerCalendarTools(server: McpServer, client: Signal8ApiClien
         'date window. Optionally restrict to a universe (sp500/ndx/dji/all) and/or a ' +
         'list of form types (default both 10-K and 10-Q).',
       inputSchema: z.object({
-        from: isoDate.optional().describe('Start date inclusive (YYYY-MM-DD, default today)'),
-        to: isoDate.optional().describe('End date inclusive (YYYY-MM-DD, default today + 45d)'),
+        from: isoDate().optional().describe('Start date inclusive (YYYY-MM-DD, default today)'),
+        to: isoDate().optional().describe('End date inclusive (YYYY-MM-DD, default today + 45d)'),
         universe: z
           .enum(['sp500', 'ndx', 'dji', 'all'])
           .optional()
@@ -135,8 +139,8 @@ export function registerCalendarTools(server: McpServer, client: Signal8ApiClien
         'dates are derived from underwriting-terms extractions (S-1/F-1/424B*) — ' +
         'coverage is partial. Useful for anticipating insider supply unlocks.',
       inputSchema: z.object({
-        from: isoDate.optional().describe('Start date inclusive (YYYY-MM-DD, default today)'),
-        to: isoDate.optional().describe('End date inclusive (YYYY-MM-DD, default today + 90d)'),
+        from: isoDate().optional().describe('Start date inclusive (YYYY-MM-DD, default today)'),
+        to: isoDate().optional().describe('End date inclusive (YYYY-MM-DD, default today + 90d)'),
         universe: z
           .enum(['sp500', 'ndx', 'dji', 'all'])
           .optional()
@@ -169,7 +173,7 @@ export function registerCalendarTools(server: McpServer, client: Signal8ApiClien
         'EPS/revenue actuals vs estimates, and surprise percentages. Filter by ' +
         'minimum absolute % change threshold.',
       inputSchema: z.object({
-        date: isoDate.describe('Earnings date to check (YYYY-MM-DD)'),
+        date: isoDate().describe('Earnings date to check (YYYY-MM-DD)'),
         minChangePct: z
           .number()
           .min(0)

@@ -9,6 +9,7 @@
  *   - get_top_movers           GET  /market/movers/{direction}
  *   - get_market_breadth       GET  /market/breadth?universe=...
  *   - get_top_performers      GET  /market/top-performers/:universe
+ *   - get_trading_halts        GET  /trading-halts   (task-2286, feature-2260)
  *
  * The single-ticker `get_quote` tool lives in `company-data.ts` (it wraps
  * `/companies/:ticker/quote`) — do not re-register it here.
@@ -31,7 +32,11 @@ import { toolHandler } from './tool-handler.js';
 // const INDEX_ETFS = ['SPY', 'QQQ', 'DIA', 'IWM', 'VTI', 'VXX', 'TLT', 'GLD', 'USO', 'FXI'];
 
 /**
- * Register all 7 cross-ticker market tools on the MCP server.
+ * Register the active cross-ticker market tools on the MCP server.
+ *
+ * Currently active: get_top_movers, get_market_breadth, get_trading_halts.
+ * The batch/universe/snapshot/top-performers tools remain block-commented out
+ * behind the 2026-06-13 FMP market-data rights review.
  */
 export function registerMarketTools(server: McpServer, client: Signal8ApiClient): void {
   // DISABLED (rights review 2026-06-13): FMP batch-quote (market data) — we do NOT
@@ -194,6 +199,24 @@ export function registerMarketTools(server: McpServer, client: Signal8ApiClient)
           `/market/breadth?universe=${encodeURIComponent(universe)}`,
         ),
       ),
+  );
+
+  // ── Trading halts (task-2286, feature-2260) ──────────────────
+  server.registerTool(
+    'get_trading_halts',
+    {
+      title: 'Get Active Trading Halts',
+      description:
+        'List currently-active trading halts across NASDAQ/NYSE/AMEX (from the ' +
+        'consolidated Nasdaq Trader halt feed). Each halt includes ticker, market, ' +
+        'haltCode (T1/T2/T12/LUDP/H10/...), human-readable reason, haltedAt, and the ' +
+        'scheduled resumptionAt when one is set. An EMPTY list is a normal state ' +
+        '(no active halts right now), not an error. Halts are tradeable catalysts — ' +
+        'use this to discover halted names, then get_quote for the frozen last price.',
+      inputSchema: z.object({}),
+      annotations: { readOnlyHint: true },
+    },
+    async () => toolHandler(() => client.get('/trading-halts')),
   );
 
   // DISABLED (rights review 2026-06-13): FMP price-change/index-constituents (market

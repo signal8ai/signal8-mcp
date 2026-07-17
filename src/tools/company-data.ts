@@ -28,7 +28,11 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
       description:
         'Get the current stock quote for a company including price, volume, change, ' +
         'market cap, and other real-time market data. Use this when a user asks about ' +
-        'a stock\'s current price or trading activity.',
+        'a stock\'s current price or trading activity. Always includes ' +
+        'halted/haltCode/haltReason/haltedAt/resumptionAt trading-halt fields ' +
+        '(false/null when trading normally); a halted ticker returns the last-known ' +
+        'quote instead of an error, or currentPrice:null + halted:true when nothing ' +
+        'is recoverable.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),

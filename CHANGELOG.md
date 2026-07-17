@@ -5,6 +5,16 @@ All notable changes to the `@signal8ai/mcp` package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-07-17
+
+### Added
+
+- **`get_intraday_bars` gains an optional `extended` boolean.** When `true`
+  (1-minute resolution only), the backend returns premarket (04:00–09:30 ET)
+  and after-hours (16:00–20:00 ET) bars in addition to the regular session.
+  Any other resolution combined with `extended=true` returns a 400 from the
+  API. Omitting the parameter is byte-identical to previous behavior.
+
 ## [0.12.3] - 2026-07-01
 
 ### Fixed

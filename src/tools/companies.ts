@@ -87,7 +87,9 @@ export function registerCompanyTools(server: McpServer, client: Signal8ApiClient
         'Get an enriched company profile by ticker symbol. Returns CIK, exchange, sector, ' +
         'industry, market cap, employee count, description, and other fundamental data. ' +
         'This is a lightweight lookup (1 credit) -- use this when you only need basic company info ' +
-        'rather than the full bundle.',
+        'rather than the full bundle. Always includes halted/haltCode/haltedAt trading-halt ' +
+        'status (false/null when trading normally); a halted-but-listed ticker reports ' +
+        'delisted:false.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
       }),

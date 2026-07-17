@@ -32,9 +32,14 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
       description:
         'Screen companies by price range, volume, cash runway, float, shares outstanding, ' +
         'market cap, industry, and float data source. Sort results by any sortable column. ' +
-        'Returns matching companies with key metrics and pagination.',
+        'Returns matching companies with key metrics and pagination. Each row carries live ' +
+        'trading-halt status (halted/haltCode/haltedAt; false/null when trading normally); ' +
+        'pass excludeHalted=true to drop currently-halted tickers from the results.',
       inputSchema: z.object({
         // Text / enum filters
+        country: z.enum(['US', 'CA', 'all']).optional().describe(
+          'Company universe by issuer domicile: "US" (default), "CA" (Canadian companies via their US-OTC/US cross-listings), or "all"',
+        ),
         industry: z.string().optional().describe(
           'Filter by company industry (exact match, e.g. "Biotechnology", "Software")',
         ),
@@ -111,15 +116,29 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
         offset: z.number().min(0).optional().describe(
           'Offset for pagination (default: 0)',
         ),
+
+        // Halt filter (task-2286, feature-2260) — appended AFTER the existing
+        // params so the in-flight `country` addition is untouched.
+        excludeHalted: z.boolean().optional().describe(
+          'When true, exclude tickers with a currently-active trading halt ' +
+          '(regulatory or volatility) from the results. Default false — halted ' +
+          'rows are included and carry halted/haltCode/haltedAt fields.',
+        ),
       }),
       annotations: { readOnlyHint: true },
     },
     async (params) => {
+      const { excludeHalted, ...rest } = params;
       const queryParams: Record<string, string> = {};
-      for (const [key, value] of Object.entries(params)) {
+      for (const [key, value] of Object.entries(rest)) {
         if (value !== undefined) {
           queryParams[key] = String(value);
         }
+      }
+      // Forward ONLY when true — a literal 'false' string is a backend
+      // boolean-coercion trap and the default (include halted) needs no param.
+      if (excludeHalted === true) {
+        queryParams.excludeHalted = 'true';
       }
       return toolHandler(() => client.get('/screener', queryParams));
     },
