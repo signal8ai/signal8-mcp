@@ -33,8 +33,11 @@ export function registerEdgarTools(server: McpServer, client: Signal8ApiClient):
         'filings enriched with company metadata: ticker, sector, industry, exchange, market cap, ' +
         'and price. Use this to answer questions like "find all S-1 filings from biotech companies ' +
         'under $500M market cap" or "show me recent 8-K filings from Technology sector companies". ' +
-        'This is the most powerful filing discovery tool — use search_sec_filings only when you ' +
-        'already know the specific CIK.',
+        'This is the most powerful filing DISCOVERY tool for filings — use search_sec_filings only ' +
+        'when you already know the specific CIK. This tool returns FILINGS, not a company universe: ' +
+        'to enumerate or COUNT companies by market cap / price / float (e.g. "find all companies ' +
+        'under $300M market cap"), use screen_companies instead — it supports minMarketCapComputed / ' +
+        'maxMarketCapComputed and returns a real total COUNT.',
       inputSchema: z.object({
         formTypes: z.string().optional().describe(
           'Comma-separated form types (e.g., "S-1", "10-K,10-Q", "8-K", "S-3,424B5")',

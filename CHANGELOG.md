@@ -5,6 +5,38 @@ All notable changes to the `@signal8ai/mcp` package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-07-30
+
+### Added
+
+- **`get_rvol_history`** — per-day relative-volume time series for a ticker,
+  bucketed by trading session (premarket 04:00–09:30 ET, regular, after-hours, or
+  all four). Each day compares that session's volume to a trailing same-session
+  baseline. Optional `asOfTime` switches to a TRUE time-of-day basis: both the
+  numerator and its baseline become the cumulative premarket volume known by that
+  15-minute ET cutoff, so "is this busy for 08:00?" is answerable directly rather
+  than against a full-session denominator (which reads roughly 10x low that early).
+  Every row carries a `basis` field reporting the cutoff used, or `full-session`
+  where it degraded — check it before comparing rows. Optional `baselineDays`
+  (default 90) sets the trailing window.
+- **`get_premarket_scan_history`** — market-wide premarket scan for one past trade
+  date: per-ticker session volume and RVOL joined to screener data, filterable by
+  price, market cap and float. Supports the same `asOfTime` / `baselineDays`.
+- **`get_premarket_scanner`** — the live premarket board (gap, RVOL, float, squeeze
+  score, news/catalyst flags). `universe: "lowfloat"` selects a separate low-float
+  board (float under 10M shares, no top-100 slice); `sort` picks `gap` or `rvol` on
+  it. An empty `rows` array with a `meta.reason` is a normal off-hours state, not an
+  error.
+- **`get_float_history`** — point-in-time float per trade date (float shares, shares
+  outstanding, and the source the figure came from), so float expansion across a
+  dilution event is visible where the latest-only `get_float` cannot show it. This
+  series is FORWARD-ONLY from mid-2026 and is not backfilled, so an empty result is
+  expected rather than an error. Each row's `source` is included because float
+  quality varies by provider.
+- **`get_market_news`** — market-wide top stories across all tickers, most recent
+  first, significance-classified at ingest (`critical` | `major` | `standard`). For
+  news about one company use `get_news` with a ticker instead.
+
 ## [0.13.0] - 2026-07-17
 
 ### Added

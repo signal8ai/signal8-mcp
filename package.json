@@ -1,15 +1,16 @@
 {
   "name": "@signal8ai/mcp",
   "mcpName": "ai.signal8/mcp",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Signal8 MCP Server - SEC filing intelligence for AI agents",
   "homepage": "https://signal8.ai/mcp",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/signal8ai/signal8-mcp.git"
+    "url": "git+https://github.com/signal8ai/signal8.git",
+    "directory": "packages/mcp-server"
   },
   "bugs": {
-    "url": "https://github.com/signal8ai/signal8-mcp/issues"
+    "url": "https://github.com/signal8ai/signal8/issues"
   },
   "author": "Signal8 AI, Inc. (https://signal8.ai)",
   "type": "module",

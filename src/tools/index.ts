@@ -2,11 +2,11 @@
  * Signal8 MCP Tools Registry
  *
  * Registers the live Signal8 MCP tools on the server, organized by domain.
- * 87 tools are exposed at runtime. The imported register* functions contain
- * 94 active server.registerTool() calls (a further 26 calls in these files are
+ * 90 tools are exposed at runtime. The imported register* functions contain
+ * 97 active server.registerTool() calls (a further 26 calls in these files are
  * block-commented out behind rights/data gates and are NOT counted); of those
- * 94, 7 are suppressed by the DISABLED_TOOLS set in registerAllTools(), leaving
- * 87. (The extractions/macro files are not imported at all.) Domains:
+ * 97, 7 are suppressed by the DISABLED_TOOLS set in registerAllTools(), leaving
+ * 90. (The extractions/macro files are not imported at all.) Domains:
  * - Companies: search_companies, get_company_bundle, get_company_profile
  * - Company Data (Phase 2): get_quote, get_market_metrics, get_short_interest, get_float,
  *     get_financials, get_earnings, get_executives, get_peers, get_transcripts,
@@ -32,7 +32,7 @@
  * - Executive Trades: get_executive_trades (list + slug)
  * - Analyst: get_analyst_grades, get_price_target, get_analyst_coverage
  * - Compliance: get_compliance, get_deficiencies, get_compliance_alerts, get_listing_classification
- * - Screener: screen_companies, get_screener_fields
+ * - Screener: screen_companies, get_screener_fields, get_premarket_scan_history
  * - Events/ATM/Splits: get_events, get_atm_activity, get_split_history
  * - ETF: get_etf_bundle
  * - Politicians: get_politicians, get_politician_detail, get_politician_transactions,
@@ -50,6 +50,7 @@
  *     get_donor_aggregates, get_donor_trade_overlap
  * - Policy Events (feature-2175): get_policy_events, get_policy_trade_overlap,
  *     get_policy_trade_leaderboard
+ * - Premarket/RVOL (feature-2300): get_rvol_history, get_premarket_scanner
  */
 
 import { z } from 'zod/v3';
@@ -76,10 +77,11 @@ import { registerAnalystTools } from './analyst.js';
 import { registerDonorTools } from './donors.js';
 import { registerPolicyTools } from './policy.js';
 import { registerFloorIntelligenceTools } from './floor-intelligence.js';
+import { registerPremarketTools } from './premarket.js';
 
 /**
- * Register the live Signal8 MCP tools on the server (87 exposed at runtime:
- * 94 active server.registerTool() calls in the imported files minus the
+ * Register the live Signal8 MCP tools on the server (90 exposed at runtime:
+ * 97 active server.registerTool() calls in the imported files minus the
  * 7-entry DISABLED_TOOLS set below).
  *
  * Each tool wraps a `/api/v1/` endpoint with:
@@ -156,7 +158,7 @@ export function registerAllTools(server: McpServer, client: Signal8ApiClient): v
   registerEdgarTools(server, client);          // 10 EDGAR filing content tools (search, document, exhibits, text search, performance)
   registerIntelligenceTools(server, client);  // 15 intelligence tools (Phase 1 + 3 + 4 cross-company)
   registerComplianceTools(server, client);    // get_compliance, get_deficiencies, get_compliance_alerts, get_listing_classification
-  registerScreenerTools(server, client);      // screen_companies, get_screener_fields
+  registerScreenerTools(server, client);      // screen_companies, get_premarket_scan_history (feature-2300)
   registerEventsAndAtmTools(server, client);  // get_events, get_atm_activity, get_split_history
   registerEtfTools(server, client);           // get_etf_bundle
   registerPoliticianTools(server, client);   // 19 politician trading tools (STOCK Act + committees + bills + votes + P&L + discovery)
@@ -170,4 +172,5 @@ export function registerAllTools(server: McpServer, client: Signal8ApiClient): v
   registerDonorTools(server, client);            // 4 campaign-donor tools (feature-199): per-politician list + summary + market-wide aggregate + donor-trade overlap
   registerPolicyTools(server, client);           // 3 policy-event overlap tools (feature-2175): EO list + per-politician overlap + leaderboard
   registerFloorIntelligenceTools(server, client); // 3 floor-intelligence tools: legislative catalyst calendar + bill impact + per-politician upcoming bills
+  registerPremarketTools(server, client);        // 2 premarket/RVOL tools (feature-2300): get_rvol_history, get_premarket_scanner
 }

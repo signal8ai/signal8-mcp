@@ -102,6 +102,40 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
   );
 
   server.registerTool(
+    'get_float_history',
+    {
+      title: 'Get Float History',
+      description:
+        'Get the POINT-IN-TIME float history for a company — one sample per trade date ' +
+        '(float shares, shares outstanding, and the source the float came from). Use to ' +
+        'answer "what was the float on date X" or to see float expand across a dilution ' +
+        'event, which the latest-only get_float cannot show. ' +
+        'IMPORTANT: this series is FORWARD-ONLY — it began accumulating in mid-2026 and is ' +
+        'NOT backfilled, so early/absent history is expected and an empty rows array is a ' +
+        'normal result, not an error or a delisted company. Each row carries "source" ' +
+        '("polygon" | "computed" | "sec_10k" | "fmp") because float quality varies by ' +
+        'provider — weigh rows accordingly rather than treating all sources as equal. ' +
+        'Charged per your API tier.',
+      inputSchema: z.object({
+        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        days: z
+          .number()
+          .int()
+          .optional()
+          .describe('Lookback window in trade dates. Default 90, clamped to 1-730.'),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ ticker, days }) => {
+      const params: Record<string, string> = {};
+      if (days !== undefined) params.days = String(days);
+      return toolHandler(() =>
+        client.get(`/companies/${encodeURIComponent(ticker)}/float-history`, params),
+      );
+    },
+  );
+
+  server.registerTool(
     'get_historical_prices',
     {
       title: 'Get Historical Stock Prices',

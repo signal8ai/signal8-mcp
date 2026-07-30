@@ -129,8 +129,12 @@ export function registerMarketTools(server: McpServer, client: Signal8ApiClient)
       description:
         'Top stock movers — gainers (largest % up), losers (largest % down), or active ' +
         '(highest volume). Optional session window (premarket / regular / afterhours; ' +
-        'regular default; not supported for active). Penny-stock artifacts are filtered by ' +
-        'default — set includePennyStocks to include sub-$1 movers.',
+        'regular default; not supported for active). Optional date (YYYY-MM-DD) returns a ' +
+        "PAST trade date's gainers/losers on a historical daily close-to-close basis " +
+        '(computed from split-adjusted daily bars, NOT intraday) — session is rejected ' +
+        'when date is set, date is not supported for direction=active, and a non-trade ' +
+        'date (weekend/holiday) returns an empty list (not an error). Penny-stock ' +
+        'artifacts are filtered by default — set includePennyStocks to include sub-$1 movers.',
       inputSchema: z.object({
         direction: z
           .enum(['gainers', 'losers', 'active'])
@@ -147,7 +151,8 @@ export function registerMarketTools(server: McpServer, client: Signal8ApiClient)
           .default('regular')
           .describe(
             'Session window: premarket (4:00–9:30 AM ET), regular (RTH close-to-close, ' +
-              'default), afterhours (4:00–8:00 PM ET).',
+              'default), afterhours (4:00–8:00 PM ET). Live-only — rejected (400) when ' +
+              'combined with date.',
           ),
         includePennyStocks: z
           .boolean()
@@ -158,10 +163,22 @@ export function registerMarketTools(server: McpServer, client: Signal8ApiClient)
               'sub-$1 movers (prev_close >= $0.10, no dollar-volume floor). The ' +
               'ABS(change_pct) <= 500 cap applies in both modes.',
           ),
+        date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be formatted YYYY-MM-DD')
+          .optional()
+          .describe(
+            "Optional past trade date (YYYY-MM-DD). When set, returns that day's top " +
+              'gainers/losers computed on a historical daily close-to-close basis from ' +
+              'split-adjusted daily bars (NOT intraday, NOT session-specific). Rejected ' +
+              'with 400 when combined with a non-regular session or with ' +
+              'direction="active"; a future or malformed date is also 400. A weekend/' +
+              'holiday date returns an empty list, not an error.',
+          ),
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ direction, limit, session, includePennyStocks }) => {
+    async ({ direction, limit, session, includePennyStocks, date }) => {
       const params: Record<string, string> = {};
       if (limit !== undefined) params.limit = String(limit);
       // Only forward `session` when the caller asked for a non-default
@@ -169,10 +186,43 @@ export function registerMarketTools(server: McpServer, client: Signal8ApiClient)
       // the backend (AC #9).
       if (session !== undefined && session !== 'regular') params.session = session;
       if (includePennyStocks === true) params.includePennyStocks = 'true';
+      // task-2303: forward the historical target date. The backend route
+      // owns validation (format/calendar/not-future/session-combo/active-combo)
+      // and credit metering is set server-side, so no MCP-side change (AC #10).
+      if (date !== undefined) params.date = date;
       return toolHandler(() =>
         client.get(`/market/movers/${encodeURIComponent(direction)}`, params),
       );
     },
+  );
+
+  // ── Market-wide news (top stories) ───────────────────────────
+  server.registerTool(
+    'get_market_news',
+    {
+      title: 'Get Market News (Top Stories)',
+      description:
+        'Get the latest market-wide news across ALL tickers, most recent first. ' +
+        'Every item is significance-classified at ingest (critical | major | standard); ' +
+        'the default filter of critical,major is the "top stories" view. Use for ' +
+        '"what is happening in the market right now" — for news about one company, ' +
+        'use get_news with a ticker instead. Requires the /news/latest public ' +
+        'endpoint (added 2026-07-29; 404 until that backend deploy).',
+      inputSchema: z.object({
+        limit: z.number().int().min(1).max(50).optional()
+          .describe('Maximum items to return (1-50). Defaults to 10.'),
+        significance: z.string().optional()
+          .describe('CSV of levels to include, e.g. "critical,major" (default) or "critical,major,standard".'),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ limit, significance }) =>
+      toolHandler(() =>
+        client.get('/news/latest', {
+          limit: String(limit ?? 10),
+          ...(significance ? { significance } : {}),
+        }),
+      ),
   );
 
   // ── Market breadth ───────────────────────────────────────────

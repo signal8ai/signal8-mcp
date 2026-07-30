@@ -1,7 +1,7 @@
 /**
  * MCP Server Integration Tests
  *
- * Verifies that all 87 tools, 3 prompts, and 2 resources are registered
+ * Verifies that all 90 tools, 3 prompts, and 2 resources are registered
  * correctly with proper metadata, annotations, and handler behavior.
  */
 
@@ -19,7 +19,7 @@ import { CapturingServer, createMockClient, type CapturedTool } from './helpers.
 
 /* ── Expected registrations ───────────────────────────────────────── */
 
-// Authoritative set of tools registered at runtime (87). Derived by running
+// Authoritative set of tools registered at runtime (88). Derived by running
 // registerAllTools() and confirmed byte-for-byte against the live
 // mcp.signal8.ai tools/list. Keep sorted; the count + "no unexpected tools"
 // assertions below guard drift.
@@ -47,6 +47,7 @@ const EXPECTED_TOOLS = [
   'get_filing_exhibits',
   'get_financials',
   'get_float',
+  'get_float_history',
   'get_historical_prices',
   'get_insider_cluster_buys',
   'get_insider_cross_company',
@@ -69,6 +70,7 @@ const EXPECTED_TOOLS = [
   'get_market_breadth',
   'get_market_metrics',
   'get_news',
+  'get_market_news',
   'get_ownership',
   'get_policy_events',
   'get_policy_trade_leaderboard',
@@ -89,11 +91,14 @@ const EXPECTED_TOOLS = [
   'get_politicians_most_active',
   'get_politicians_pnl_leaderboard',
   'get_post_earnings_movers',
+  'get_premarket_scan_history',
+  'get_premarket_scanner',
   'get_price_target',
   'get_quote',
   'get_recent_congressional_votes',
   'get_recent_material_filings',
   'get_recently_sponsored_bills',
+  'get_rvol_history',
   'get_senate_trades_by_ticker',
   'get_short_interest',
   'get_split_history',
@@ -147,8 +152,8 @@ beforeAll(() => {
 /* ── Tool registration ────────────────────────────────────────────── */
 
 describe('tool registration', () => {
-  it('registers exactly 87 tools', () => {
-    expect(server.tools).toHaveLength(87);
+  it('registers exactly 92 tools', () => {
+    expect(server.tools).toHaveLength(92);
   });
 
   it.each(EXPECTED_TOOLS)('registers tool: %s', (name) => {
@@ -229,6 +234,67 @@ describe('schema richness', () => {
     }) as any;
     expect(json.properties.query.description).toMatch(/Search query/);
   });
+
+  // task-2320 — the new suppressed-cohort param must reach the JSON Schema too.
+  // It is the only way an agent learns the escape hatch exists, so a silent
+  // `.describe()` loss here makes the whole feature undiscoverable.
+  it('get_premarket_scan_history exposes a DESCRIBED includeNoHistory param', () => {
+    const tool = toolMap.get('get_premarket_scan_history')!;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const shape = (tool.config.inputSchema as any).shape;
+    expect(shape.includeNoHistory).toBeDefined();
+    expect(shape.includeNoHistory?._def?.description).toMatch(/no-history/);
+
+    const obj = normalizeObjectSchema(tool.config.inputSchema);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const json = toJsonSchemaCompat(obj, { strictUnions: true, pipeStrategy: 'input' }) as any;
+    expect(json.properties.includeNoHistory.type).toBe('boolean');
+    expect(json.properties.includeNoHistory.description).toMatch(/no-cutoff-history/);
+    // It must stay OPTIONAL — a required flag would break every existing caller.
+    expect(json.required ?? []).not.toContain('includeNoHistory');
+  });
+
+  it('get_rvol_history documents baselineState/advRatio in its description', () => {
+    const tool = toolMap.get('get_rvol_history')!;
+    expect(tool.config.description).toMatch(/baselineState/);
+    expect(tool.config.description).toMatch(/advRatio/);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const shape = (tool.config.inputSchema as any).shape;
+    expect(Object.keys(shape).sort()).toEqual([
+      'asOfTime',
+      'baselineDays',
+      'days',
+      'session',
+      'ticker',
+    ]);
+  });
+
+  // The configurable RVOL baseline window. `zod/v3` is load-bearing on BOTH
+  // tools: under zod v4 `.describe()` is silently dropped from the emitted JSON
+  // schema and the parameter reaches the model undocumented.
+  it.each(['get_rvol_history', 'get_premarket_scan_history'])(
+    '%s exposes an OPTIONAL, clamped, DESCRIBED baselineDays',
+    (toolName) => {
+      const tool = toolMap.get(toolName)!;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const shape = (tool.config.inputSchema as any).shape;
+      expect(shape).toHaveProperty('baselineDays');
+
+      const obj = normalizeObjectSchema(tool.config.inputSchema);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const json = toJsonSchemaCompat(obj, { strictUnions: true, pipeStrategy: 'input' }) as any;
+      const prop = json.properties.baselineDays as Record<string, unknown>;
+      // Descriptions survive (the zod/v3 gotcha) …
+      expect(String(prop.description)).toMatch(/baseline/i);
+      expect(String(prop.description)).toMatch(/90/);
+      // … and the documented bounds match the backend clamp.
+      expect(prop.type).toBe('integer');
+      expect(prop.minimum).toBe(20);
+      expect(prop.maximum).toBe(250);
+      // Optional — a required window would break every existing caller.
+      expect(json.required ?? []).not.toContain('baselineDays');
+    },
+  );
 
   // Gap 2 — every exposed tool advertises an outputSchema (injected generically
   // in registerAllTools). Smithery credits output-schema presence per tool.

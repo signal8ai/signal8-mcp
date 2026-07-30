@@ -158,6 +158,33 @@ describe('market tools', () => {
     ).toBe(false);
   });
 
+  // task-2303: optional historical ?date=YYYY-MM-DD
+  it('get_top_movers omits date query param by default', async () => {
+    const tool = toolMap.get('get_top_movers')!;
+    await tool.handler({ direction: 'gainers' });
+    expect(client.get).toHaveBeenLastCalledWith('/market/movers/gainers', {});
+  });
+
+  it('get_top_movers forwards ?date through to the route', async () => {
+    const tool = toolMap.get('get_top_movers')!;
+    await tool.handler({ direction: 'gainers', date: '2026-06-18' });
+    expect(client.get).toHaveBeenLastCalledWith('/market/movers/gainers', {
+      date: '2026-06-18',
+    });
+    await tool.handler({ direction: 'losers', date: '2026-06-18', limit: 5 });
+    expect(client.get).toHaveBeenLastCalledWith('/market/movers/losers', {
+      limit: '5',
+      date: '2026-06-18',
+    });
+  });
+
+  it('get_top_movers schema rejects a malformed date and accepts a well-formed one', () => {
+    const schema = toolMap.get('get_top_movers')!.config.inputSchema as z.ZodSchema;
+    expect(schema.safeParse({ direction: 'gainers', date: '2026-06-18' }).success).toBe(true);
+    expect(schema.safeParse({ direction: 'gainers', date: 'nope' }).success).toBe(false);
+    expect(schema.safeParse({ direction: 'gainers', date: '06/18/2026' }).success).toBe(false);
+  });
+
   // ── get_market_breadth (task-1862) ────────────────────────────
   it('get_market_breadth GETs /market/breadth?universe=sp500', async () => {
     const tool = toolMap.get('get_market_breadth')!;
