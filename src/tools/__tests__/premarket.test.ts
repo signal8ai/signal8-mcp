@@ -49,21 +49,23 @@ describe('premarket tools', () => {
     });
   });
 
-  it('get_rvol_history omits session; days defaults to 180', async () => {
+  it('get_rvol_history omits session AND days when not supplied (server default 30 wins)', async () => {
+    // `days` MUST NOT carry a schema default: the public API caps it at 90, so a
+    // forced client-side default (the old 180) 400s every call that omits it.
     const schema = toolMap.get('get_rvol_history')!.config.inputSchema as z.ZodSchema;
-    expect((schema.parse({ ticker: 'AAPL' }) as { days?: number }).days).toBe(180);
-    await toolMap.get('get_rvol_history')!.handler({ ticker: 'AAPL', days: 180 });
-    expect(client.get).toHaveBeenCalledWith('/companies/AAPL/rvol-history', { days: '180' });
+    expect((schema.parse({ ticker: 'AAPL' }) as { days?: number }).days).toBeUndefined();
+    await toolMap.get('get_rvol_history')!.handler({ ticker: 'AAPL' });
+    expect(client.get).toHaveBeenCalledWith('/companies/AAPL/rvol-history', {});
   });
 
   it('get_rvol_history forwards baselineDays only when supplied', async () => {
-    await toolMap.get('get_rvol_history')!.handler({ ticker: 'AAPL', days: 180 });
-    expect(client.get).toHaveBeenCalledWith('/companies/AAPL/rvol-history', { days: '180' });
+    await toolMap.get('get_rvol_history')!.handler({ ticker: 'AAPL', days: 90 });
+    expect(client.get).toHaveBeenCalledWith('/companies/AAPL/rvol-history', { days: '90' });
 
     client.get.mockClear();
-    await toolMap.get('get_rvol_history')!.handler({ ticker: 'AAPL', days: 180, baselineDays: 30 });
+    await toolMap.get('get_rvol_history')!.handler({ ticker: 'AAPL', days: 90, baselineDays: 30 });
     expect(client.get).toHaveBeenCalledWith('/companies/AAPL/rvol-history', {
-      days: '180',
+      days: '90',
       baselineDays: '30',
     });
   });
@@ -79,11 +81,16 @@ describe('premarket tools', () => {
     expect(schema.safeParse({ ticker: 'AAPL' }).success).toBe(true);
   });
 
-  it('get_rvol_history schema rejects bad session + out-of-range days', () => {
+  it('get_rvol_history schema rejects bad session + days outside the server 1–90 range', () => {
     const schema = toolMap.get('get_rvol_history')!.config.inputSchema as z.ZodSchema;
     expect(schema.safeParse({ ticker: 'AAPL', session: 'lunch' }).success).toBe(false);
     expect(schema.safeParse({ ticker: 'AAPL', days: 0 }).success).toBe(false);
+    // The public API's RVOL_MAX_DAYS is 90 — anything above 400s upstream, so the
+    // schema must reject it here rather than let a doomed request through.
+    expect(schema.safeParse({ ticker: 'AAPL', days: 91 }).success).toBe(false);
     expect(schema.safeParse({ ticker: 'AAPL', days: 366 }).success).toBe(false);
+    expect(schema.safeParse({ ticker: 'AAPL', days: 90 }).success).toBe(true);
+    expect(schema.safeParse({ ticker: 'AAPL', days: 1 }).success).toBe(true);
     expect(schema.safeParse({ ticker: 'AAPL' }).success).toBe(true);
   });
 

@@ -55,9 +55,9 @@ export function registerPremarketTools(server: McpServer, client: Signal8ApiClie
           .number()
           .int()
           .min(1)
-          .max(365)
-          .default(180)
-          .describe('Number of trailing calendar days of history (1–365, default 180).'),
+          .max(90)
+          .optional()
+          .describe('Number of trailing calendar days of history (1–90, default 30).'),
         asOfTime: z
           .string()
           .regex(/^\d{2}:\d{2}$/, 'asOfTime must be HH:MM (24h ET)')

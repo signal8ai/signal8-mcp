@@ -3,7 +3,7 @@
   "name": "ai.signal8/mcp",
   "title": "Signal8",
   "description": "SEC filings, dilution, insider & institutional ownership, and political-trade data for AI agents.",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "websiteUrl": "https://signal8.ai/mcp",
   "repository": {
     "url": "https://github.com/signal8ai/signal8-mcp",
@@ -28,7 +28,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@signal8ai/mcp",
-      "version": "0.14.0",
+      "version": "0.15.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

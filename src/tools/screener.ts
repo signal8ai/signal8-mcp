@@ -165,7 +165,16 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
         'error). Every row also reports "baselineState" (why its RVOL is or is not null), ' +
         '"advRatio" (volume ÷ trailing 30-session average FULL-DAY volume) and "advDays"; set ' +
         'includeNoHistory=true to surface high-volume tickers that have no computable RVOL at ' +
-        'all, such as first-session new listings. Charged per your API tier.',
+        'all, such as first-session new listings. Each row ALSO publishes the RVOL denominator ' +
+        'itself as "baselineVolume" (shares) plus a "baselineThin" flag (true when that ' +
+        'denominator is under 200 shares): a 90x RVOL off a 1-share baseline is arithmetically ' +
+        'correct and analytically worthless. That is almost entirely an asOfTime-basis effect ' +
+        '(0.1% of full-session rows vs ~38% at the 04:30 cutoff, falling to ~9% by 09:15) and it ' +
+        'skews to LIQUID LARGE CAPS that simply do not trade early, NOT to microcaps. Screen it ' +
+        'out with minBaselineVolume and/or minSessionVolume. The response "meta" also reports ' +
+        'asOfApplied / asOfIgnored / asOfIgnoredReason, so a time-of-day request that could not ' +
+        'be honoured is visible instead of quietly returning full-session numbers. ' +
+        'Charged per your API tier.',
       inputSchema: z.object({
         date: z
           .string()
@@ -202,6 +211,29 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
           .number()
           .optional()
           .describe('Maximum market cap in USD (e.g. 500000000 for sub-$500M).'),
+        minBaselineVolume: z
+          .number()
+          .optional()
+          .describe(
+            'Minimum RVOL DENOMINATOR in shares. Drops rows whose "baselineVolume" is below ' +
+              'it, plus every row that has no baseline at all. This is the direct fix for a ' +
+              'huge RVOL computed against a near-zero baseline (e.g. 102 shares ÷ a 1.2-share ' +
+              'baseline = 87x on a $10B company that just does not trade at 04:30). Try 200 to ' +
+              'match the "baselineThin" flag, or higher for a stricter screen. Does NOT change ' +
+              'any RVOL — it only removes rows. Note it also excludes the includeNoHistory ' +
+              'cohort, which by definition has no denominator.',
+          ),
+        minSessionVolume: z
+          .number()
+          .optional()
+          .describe(
+            'Minimum RVOL NUMERATOR in shares — the scanned session\'s own volume. Answers ' +
+              '"did enough actually trade to be worth acting on?", where minBaselineVolume ' +
+              'answers "is the comparison meaningful at all?". USE BOTH IF YOU MEAN BOTH: ' +
+              'neither subsumes the other (a 1,000-share floor here cuts thin-baseline rows ' +
+              'from ~26% to ~3%, yet a name with an 860-share baseline and 11.8M shares traded ' +
+              'passes this and fails a baseline floor).',
+          ),
         minPrice: z.number().optional().describe('Minimum latest price in USD.'),
         maxPrice: z.number().optional().describe('Maximum latest price in USD.'),
         minFloat: z.number().optional().describe('Minimum public float (shares).'),
@@ -227,7 +259,16 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
               '"basis" field: "asof-0700" (the snapped cutoff actually used) when a ' +
               'precomputed row exists, else "full-session" (automatic per-row fallback — ' +
               'the as-of series is forward-looking and may be sparse). Only applies to a ' +
-              'premarket scan. Omit for full-session premarket volume.',
+              'premarket scan. Omit for full-session premarket volume. ' +
+              'CHECK "meta.asOfApplied" (the SNAPPED cutoff actually used, or null) and ' +
+              '"meta.asOfIgnored" / "meta.asOfIgnoredReason" ("date-not-covered" — the as-of ' +
+              'grid has not been computed for this date, so the numbers are full-session; ' +
+              '"non-premarket-session" — asOfTime only applies to a premarket scan; ' +
+              '"unparseable"). Coverage is a set with HOLES that grows as the backfill runs, ' +
+              'so do NOT assume any cutover date — read the meta per request. An unhonoured ' +
+              'asOfTime is never an error, so this is the only reliable check. ' +
+              'ALSO NOTE: this basis is where near-zero RVOL baselines come from — pair it ' +
+              'with minBaselineVolume (see "baselineThin").',
           ),
         baselineDays: z
           .number()

@@ -5,6 +5,42 @@ All notable changes to the `@signal8ai/mcp` package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-07-31
+
+### Added
+
+- **`get_premarket_scan_history` / `get_premarket_scanner` now expose the RVOL
+  denominator.** Every row carries `baselineVolume` (the same-cutoff trailing
+  average the `rvol` was divided by) and `baselineThin` (`baselineVolume < 200`).
+  Needed because on the `asOfTime` basis a large minority of rows divide by
+  almost nothing — a reported `130,600x` can mean "5.5M shares against a 42-share
+  baseline". The magnitude is noise there even though the underlying event is
+  real. `rvol` itself is UNCHANGED. Note this is an as-of-only effect: the
+  full-session basis is clean.
+- **`minBaselineVolume` and `minSessionVolume` filters** on
+  `get_premarket_scan_history`. The first floors the denominator, the second the
+  numerator; they are not interchangeable — a name can have a healthy session
+  volume against a near-zero baseline, or vice versa.
+- **As-of transparency on `get_premarket_scan_history`.** `meta.asOfApplied`
+  reports the *snapped* cutoff actually used (`asof-0415`) or `null`, with
+  `meta.asOfIgnored` / `meta.asOfIgnoredReason`. Previously a degraded read was
+  only visible via the per-row `basis` field, which is overloaded — it reads
+  `full-session` both when you did not ask for an as-of basis and when you asked
+  and we could not serve it.
+
+### Changed
+
+- **`get_rvol_history.days` is now `1–90, optional` (was `1–365` with a forced
+  default of 180).** The `.default(180)` meant every call that omitted `days`
+  sent 180, which the server rejects — the tool 400'd on every default
+  invocation. Omitting `days` now applies the server default of 30. Calls
+  passing `days > 90` fail at schema validation instead of as an opaque 400.
+- **`floatShares` no longer reports `0` for an uncomputable float.** A stored
+  zero passed `maxFloat` filters and sorted in as the lowest-float name in the
+  market — e.g. a ~$50B ADR ranking 4th in a "float under 10M shares" screen.
+  Those sources now fall through, recovering a real float where one is derivable
+  (SDEV: ~2.98M shares) and otherwise reporting no value rather than a wrong one.
+
 ## [0.14.0] - 2026-07-30
 
 ### Added
