@@ -1,5 +1,7 @@
 # @signal8ai/mcp
 
+[![MCP Queen operational grade](https://mcpqueen.com/badge/ai.signal8/mcp.svg)](https://mcpqueen.com/s/ai.signal8/mcp)
+
 MCP (Model Context Protocol) server for [Signal8](https://signal8.ai) -- AI-extracted SEC filing intelligence data.
 
 Gives AI agents like Claude, Cursor, and other MCP-compatible tools direct access to:
