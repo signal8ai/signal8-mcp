@@ -56,9 +56,15 @@ export function registerEdgarTools(server: McpServer, client: Signal8ApiClient):
         minMarketCap: z.number().optional().describe('Minimum market cap in USD (e.g., 1000000000 for $1B)'),
         maxMarketCap: z.number().optional().describe('Maximum market cap in USD (e.g., 500000000 for $500M)'),
         sortBy: z.enum(['filing_date', 'form_type', 'company_name']).optional().describe(
-          'Sort results by field (default: filing_date)',
+          'Sort results by field (default: filing_date). Ties are broken by filing id, so a given ' +
+          'page is stable and reproducible for a fixed corpus.',
         ),
-        sortOrder: z.enum(['asc', 'desc']).optional().describe('Sort direction (default: desc)'),
+        sortOrder: z.enum(['asc', 'desc']).optional().describe(
+          'Sort direction (default: desc). Note that paging is offset-based over a corpus that is ' +
+          'continuously ingesting new filings, so when walking many pages of a broad date range, ' +
+          'newly-arrived filings can shift rows between pages; page on a closed dateFrom/dateTo ' +
+          'window if you need an exhaustive, non-overlapping traversal.',
+        ),
         page: z.number().min(1).optional().describe('Page number (1-indexed, default: 1)'),
         pageSize: z.number().min(1).max(100).optional().describe('Results per page (default: 25, max: 100)'),
       }),

@@ -87,9 +87,27 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Get Float Data',
       description:
-        'Get float and share structure data for a company including shares outstanding, ' +
-        'public float, insider ownership percentage, and institutional ownership. ' +
-        'Use when analyzing share supply and ownership concentration.',
+        'Get float data for a company: floatShares, source, floatDefinition, and as-of date. ' +
+        'Use when analyzing share supply. ' +
+        'IMPORTANT: check "floatDefinition" to know which float you are reading — ' +
+        '"tradeable" (shares outstanding minus affiliates minus restricted/unregistered blocks: ' +
+        'what can actually reach the tape; used on filing-derived dilution-snapshot tickers), ' +
+        '"non_affiliate" (the SEC I.B.6 figure, which INCLUDES restricted shares held by ' +
+        'non-affiliates — not what a trader means by float), "non_affiliate_estimate" ' +
+        '(approximated from ownership filings), or "free_float" (vendor methodology). ' +
+        'On snapshot tickers "nonAffiliateFloatShares" carries the SEC I.B.6 figure separately — ' +
+        'it is the ONLY correct input to baby-shelf / I.B.6 shelf-capacity math; never use the ' +
+        'tradeable float there, and never present the non-affiliate figure as tradeable supply. ' +
+        'floatShares:null with "floatWithheldReason" set ("restricted_blocks_unnetted" | ' +
+        '"stated_figure_impossible" | "affiliate_basis_stale" | "affiliate_figure_declined") means ' +
+        'the figure was deliberately WITHHELD, not unavailable — do not substitute a vendor float. ' +
+        'On "affiliate_basis_stale", "affiliateBasis.floatLowerBound" / "floatUpperBound" are a RANGE ' +
+        'the float lies in (both ends or neither; null = not measurable) — a range to state, never ' +
+        'a number to compute with. "restrictedShares":null means NOT MEASURED (a block ' +
+        'exists whose size the filings do not state), NEVER zero; "restrictedBlockCount":0 is an ' +
+        'answer, not an absence. "affiliateBasisStale" (with basisSpanDays/affiliateAnchorDate) ' +
+        'labels a float whose affiliate table is materially older than its share count — the ' +
+        'number itself is unchanged.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),

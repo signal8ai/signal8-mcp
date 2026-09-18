@@ -59,11 +59,21 @@ export function registerCashPositionTools(server: McpServer, client: Signal8ApiC
     {
       title: 'Get AI Cash Position',
       description:
-        'Get the Signal8 AI cash position model for a company. Returns the cash anchor ' +
-        '(from latest 10-K/10-Q), prorated burn rate, post-anchor capital raises, material ' +
-        'cash events, and three runway scenarios (closed, pending, announced). Use when ' +
-        'analyzing a company\'s current cash situation, runway, or capital raise activity. ' +
-        'Returns 404 when no cash-position model is available for the requested ticker.',
+        'Get the Signal8 cash position model for a company, derived from the dilution ' +
+        'snapshot pipeline: anchor cash and anchor date, monthly burn, post-anchor capital ' +
+        'raises (with SEC filing citations), known outflows, estimated current cash and ' +
+        'runway months. Use when analyzing a company\'s current cash situation, runway, or ' +
+        'capital raise activity. ' +
+        'ALWAYS RETURNS 200 — read `available` and `reason`, never the HTTP status: coverage ' +
+        'is partial, so `available: false` with reason `snapshot_not_generated` means THIS ' +
+        'COMPANY HAS NOT BEEN ANALYSED YET, which is different from it having no cash data ' +
+        'and different from an outage (an outage is a 5xx). Never report a company as having ' +
+        'no cash or no runway on the strength of an unavailable response. ' +
+        'The `scenarios` envelope is preserved for compatibility but only `scenarios.closed` ' +
+        'is populated: `pending` and `announced` are null with reason `scenario_not_modelled` ' +
+        'because the extraction records only REALIZED cash-raising events and never models ' +
+        'speculative raises. Do not infer them from shelf or ATM capacity. ' +
+        'Requires the Dilution Snapshots add-on (403 ADDON_REQUIRED without it).',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),

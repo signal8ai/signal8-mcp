@@ -4,7 +4,9 @@
  * Tools for corporate events, at-the-market program activity, and stock splits:
  * - get_events: Unified corporate events (financing, offerings, splits, etc.)
  * - get_atm_activity: ATM program capacity and utilization tracking
- * - get_split_history: Stock split history with type classification and cumulative ratio
+ * - get_split_history: Stock split history with type classification, per-split
+ *   confirmation state, and a cumulative ratio that is WITHHELD (null) when the
+ *   record contains a split only one source evidences
  */
 
 import { z } from 'zod/v3';
@@ -68,7 +70,16 @@ export function registerEventsAndAtmTools(server: McpServer, client: Signal8ApiC
       description:
         'Get stock split history for a company including forward and reverse splits with dates, ratios, ' +
         'type classification, and cumulative 2-year reverse split ratio. Relevant for NASDAQ/NYSE ' +
-        'minimum bid-price compliance (1:250 cumulative reverse-split cap).',
+        'minimum bid-price compliance (1:250 cumulative reverse-split cap). ' +
+        'IMPORTANT: `cumulativeReverseSplitRatio2yr` is null when it CANNOT BE STATED, which is NOT ' +
+        'the same as no reverse splits — read `cumulativeWithheldReason` to tell them apart. ' +
+        '`unconfirmed_splits_in_window` means at least one in-window reverse split is evidenced by only ' +
+        'one source, so no cumulative is defensible: the confirmed splits alone would understate it, and ' +
+        'understating a cumulative can put an issuer that breaches the 1:250 cap under it. Each row also ' +
+        'carries `confirmed`; a `confirmed: false` split appears only in the announcement calendar, which ' +
+        'retains every announcement and retracts none, so it is usually an amended or superseded ' +
+        'announcement and occasionally a real split the effected-splits ledger missed. Both are returned. ' +
+        '`ratioDisplay` and `type` are likewise null for a ratio whose exact factor cannot be determined.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
       }),

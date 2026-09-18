@@ -5,6 +5,62 @@ All notable changes to the `@signal8ai/mcp` package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.16.0] - 2026-09-18
+
+### Added
+
+- **Seven dilution tools.** `get_dilution_snapshot`, `get_dilution_instruments`,
+  `get_dilution_risk`, `get_dilution_history`, `get_dilution_coverage`,
+  `get_dilution_performance` and `get_baby_shelf_capacity` expose the dilution
+  snapshot product — warrants, convertibles, preferred, ATMs, shelfs/S-3s, ELOCs
+  and the Baby Shelf (General Instruction I.B.6) capacity calculation.
+  🔴 Absence is never a favourable claim: an uncovered ticker returns a stated
+  "not measured" rather than a zero, and a withheld snapshot is withheld on every
+  one of these tools rather than only the primary one.
+- **Two corporate-action calendar tools.** `get_upcoming_reverse_splits` and
+  `get_recent_uplistings`. Reverse splits carry the stage (proposed → in_effect)
+  and, where the filing stated one, the effective date; a conditional or hedged
+  date is rendered verbatim rather than parsed into a claim. Uplistings are the
+  FINRA OTC daily-list record of a security leaving the OTC market — where the
+  new symbol could not be resolved it is reported as unresolved rather than
+  guessed, because a wrong ticker is a false claim about a company that did not
+  uplist.
+
+Tool count 92 → **101**.
+
+### Changed
+
+- **The default RVOL baseline window is now 30 trading sessions (was 90).**
+  Affects `get_rvol_history`, `get_premarket_scan_history`, and the
+  `rvol` / `liveRvol` / `premarketPaceRatio` fields on `get_premarket_scanner`
+  whenever `baselineDays` is omitted. Pass `baselineDays: 90` to reproduce the
+  previous denominator. The 20-prior-session warm-up gate is unchanged, so at
+  the new default a ticker needs 20 of its last 30 sessions populated — thinly
+  traded names that had an RVOL under the 90-row window may now return
+  `rvol: null` with `baselineState: "warming"` (full-session basis) or
+  `"no-cutoff-history"` (as-of basis). Tool descriptions updated to match.
+- **A float withheld as `affiliate_basis_stale` is now stated as a RANGE**
+  rather than returned blank. A blank reads as "no data"; the range says what is
+  actually known.
+- **Split responses carry their uncertainty on the wire** instead of resolving it
+  silently.
+- **`get_cash_position` reads the model from the dilution snapshot** rather than
+  the previously frozen service.
+- Premarket surfaces now reflect a ticker rename that was previously invisible on
+  two of them.
+
+### Removed
+
+- **`get_legal_counsels`** — the standalone Legal Counsels feature was dropped
+  (the page had been disabled for months). Callers of this tool will now get an
+  unknown-tool error rather than a stale answer.
+- **Four sec-extraction instrument flags and `rofr_status` / `last_financing_*`
+  are no longer exposed on the screener surface.** They were withdrawn rather
+  than left in place because the filters would have silently returned empty
+  result sets. Dilution is served by the seven dedicated tools above.
+
 ## [0.15.0] - 2026-07-31
 
 ### Added

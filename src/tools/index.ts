@@ -2,11 +2,20 @@
  * Signal8 MCP Tools Registry
  *
  * Registers the live Signal8 MCP tools on the server, organized by domain.
- * 90 tools are exposed at runtime. The imported register* functions contain
- * 97 active server.registerTool() calls (a further 26 calls in these files are
+ * 101 tools are exposed at runtime. The imported register* functions contain
+ * 108 active server.registerTool() calls (further calls in these files are
  * block-commented out behind rights/data gates and are NOT counted); of those
- * 97, 7 are suppressed by the DISABLED_TOOLS set in registerAllTools(), leaving
- * 90. (The extractions/macro files are not imported at all.) Domains:
+ * 108, 7 are suppressed by the DISABLED_TOOLS set in registerAllTools(), leaving
+ * 101. (The extractions/macro files are not imported at all.)
+ *
+ * ⚠️ This count is hand-maintained and HAD DRIFTED — it read "90 exposed / 97
+ * active" while the measured values were 92 / 99 (corrected 2026-09-07, when the
+ * 7 dilution tools took it to 99 / 106; re-measured 2026-09-14 at 101 / 108 when
+ * the 2 social-calendar tools landed). Derive it rather than trusting the prose:
+ * strip block comments from each imported tools file, count `server.registerTool(`
+ * occurrences, and subtract the DISABLED_TOOLS entries.
+ *
+ * Domains:
  * - Companies: search_companies, get_company_bundle, get_company_profile
  * - Company Data (Phase 2): get_quote, get_market_metrics, get_short_interest, get_float,
  *     get_financials, get_earnings, get_executives, get_peers, get_transcripts,
@@ -23,7 +32,7 @@
  *     search_filing_text, lookup_accession_number, get_edgar_companies
  * - Intelligence: get_counterparties, get_counsel, get_insiders, get_ownership, get_rofr_triggers,
  *     get_institutions, get_institution_detail, get_institution_holdings,
- *     get_banks, get_legal_counsels, get_insider_transactions, get_insider_cluster_buys,
+ *     get_banks, get_insider_transactions, get_insider_cluster_buys,
  *     get_institution_top_aum, get_institution_position_changes,
  *     get_counsel_cross_company, get_insider_cross_company,
  *     get_institution_activity, get_institution_filings, get_institution_derivatives,
@@ -44,6 +53,9 @@
  *     get_political_sector_rotation, get_cross_politician_donor_trade_overlap
  * - Cash Position: get_cash_position, get_cash_history, screen_must_raise,
  *     get_burn_rate_comparison, get_offerings_since_anchor, get_cash_runway_calendar
+ * - Dilution (add-on gated): get_dilution_coverage, get_dilution_risk,
+ *     get_dilution_snapshot, get_dilution_instruments, get_baby_shelf_capacity,
+ *     get_dilution_performance, get_dilution_history
  * - Intraday: get_intraday_bars, get_volume_profile, get_accumulation_snapshot
  * - Macro: get_eia_petroleum, get_commodity_alerts, get_macro_feed
  * - Donors (feature-199): get_politician_donors, get_politician_donor_summary,
@@ -51,6 +63,7 @@
  * - Policy Events (feature-2175): get_policy_events, get_policy_trade_overlap,
  *     get_policy_trade_leaderboard
  * - Premarket/RVOL (feature-2300): get_rvol_history, get_premarket_scanner
+ * - Social Calendar: get_upcoming_reverse_splits, get_recent_uplistings
  */
 
 import { z } from 'zod/v3';
@@ -69,6 +82,7 @@ import { registerEventsAndAtmTools } from './events-atm.js';
 import { registerEtfTools } from './etf.js';
 import { registerPoliticianTools } from './politicians.js';
 import { registerCashPositionTools } from './cash-position.js';
+import { registerDilutionTools } from './dilution.js';
 import { registerIntradayTools } from './intraday.js';
 // DISABLED: import { registerMacroTools } from './macro.js';
 import { registerInsiderPositionsTools } from './insider-positions.js';
@@ -78,10 +92,11 @@ import { registerDonorTools } from './donors.js';
 import { registerPolicyTools } from './policy.js';
 import { registerFloorIntelligenceTools } from './floor-intelligence.js';
 import { registerPremarketTools } from './premarket.js';
+import { registerSocialCalendarTools } from './social-calendar.js';
 
 /**
- * Register the live Signal8 MCP tools on the server (90 exposed at runtime:
- * 97 active server.registerTool() calls in the imported files minus the
+ * Register the live Signal8 MCP tools on the server (101 exposed at runtime:
+ * 108 active server.registerTool() calls in the imported files minus the
  * 7-entry DISABLED_TOOLS set below).
  *
  * Each tool wraps a `/api/v1/` endpoint with:
@@ -163,6 +178,7 @@ export function registerAllTools(server: McpServer, client: Signal8ApiClient): v
   registerEtfTools(server, client);           // get_etf_bundle
   registerPoliticianTools(server, client);   // 19 politician trading tools (STOCK Act + committees + bills + votes + P&L + discovery)
   registerCashPositionTools(server, client); // 6 cash position & runway tools
+  registerDilutionTools(server, client);     // 7 dilution tools (add-on gated): coverage, risk, snapshot, instruments, ib6, performance, history
   registerIntradayTools(server, client);    // 3 intraday analysis tools (bars, volume profile, accumulation)
   // DISABLED: macro feeds are dormant upstream (ai-api serves no eia-petroleum/commodity-price items) — get_eia_petroleum, get_commodity_alerts, get_macro_feed
   // registerMacroTools(server, client);
@@ -173,4 +189,5 @@ export function registerAllTools(server: McpServer, client: Signal8ApiClient): v
   registerPolicyTools(server, client);           // 3 policy-event overlap tools (feature-2175): EO list + per-politician overlap + leaderboard
   registerFloorIntelligenceTools(server, client); // 3 floor-intelligence tools: legislative catalyst calendar + bill impact + per-politician upcoming bills
   registerPremarketTools(server, client);        // 2 premarket/RVOL tools (feature-2300): get_rvol_history, get_premarket_scanner
+  registerSocialCalendarTools(server, client);   // 2 social-calendar tools: get_upcoming_reverse_splits, get_recent_uplistings
 }

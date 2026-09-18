@@ -32,7 +32,7 @@ export function registerPremarketTools(server: McpServer, client: Signal8ApiClie
         'Get the per-day relative-volume (RVOL) time series for a ticker, bucketed by ' +
         'trading session (premarket 04:00–09:30 ET, regular 09:30–16:00, afterhours ' +
         "16:00–20:00, or all four). Each day's RVOL compares that session's volume to a " +
-        'trailing same-session baseline (90 days by default — configurable via '
+        'trailing same-session baseline (30 trading days by default — configurable via '
         + '"baselineDays"), so premarket volume is judged against ' +
         'premarket history (not a stale full-day figure). Use for spotting unusual ' +
         'premarket / session volume surges over the last N days. Each point also carries ' +
@@ -66,8 +66,8 @@ export function registerPremarketTools(server: McpServer, client: Signal8ApiClie
             'Optional TRUE time-of-day premarket basis. Any HH:MM ET premarket time; ' +
               'snapped to the nearest 15-minute grid cutoff (04:00–09:15, ties resolve to ' +
               'the earlier cutoff). When set, the series is the PREMARKET as-of RVOL: ' +
-              'cumulative volume known BY that cutoff ÷ the 90-day average of the SAME ' +
-              'cutoff (not the full 04:00–09:30 session). Forces the premarket session — ' +
+              'cumulative volume known BY that cutoff ÷ the trailing baselineDays (default 30) ' +
+              'average of the SAME cutoff (not the full 04:00–09:30 session). Forces the premarket session — ' +
               'any "session" argument is ignored. Each point carries a "basis" field: the ' +
               'snapped cutoff actually used ("asof-0700"), or "full-session" for dates with ' +
               'no precomputed as-of row. Omit for the standard full-session series.',
@@ -80,14 +80,16 @@ export function registerPremarketTools(server: McpServer, client: Signal8ApiClie
           .optional()
           .describe(
             'Rolling RVOL baseline window, in trading rows (same-session days). ' +
-              'Default 90; values outside 20-250 are clamped. This is the DENOMINATOR ' +
+              'Default 30; values outside 20-250 are clamped. This is the DENOMINATOR ' +
               'window: every RVOL in the response is that period\'s volume divided by ' +
               'the average of the trailing N same-session (or same-cutoff) days, ' +
               'excluding the day itself. A SHORTER window tracks recent regime changes ' +
               'faster and is noisier; a LONGER one is smoother and slower to react. The ' +
-              'warm-up lookback and the minimum-warm-days gate scale with it ' +
-              'automatically, so a wide window is never under-filled into an inflated ' +
-              'ratio. Omit for the standard 90-day baseline.',
+              'warm-up lookback scales with it automatically, so a wide window is never ' +
+              'under-filled into an inflated ratio; the minimum-warm-days gate (20 prior ' +
+              'sessions) does NOT scale down, so at the 30-row default a ticker needs ' +
+              '20 of its last 30 sessions populated before rvol is non-null. Omit for ' +
+              'the standard 30-day baseline; pass 90 for the pre-2026-09 window.',
           ),
       }),
       annotations: { readOnlyHint: true },
@@ -118,12 +120,12 @@ export function registerPremarketTools(server: McpServer, client: Signal8ApiClie
         'During the 04:00–09:30 ET premarket window rows also carry two LIVE volume ' +
         'metrics off the same live cumulative-volume numerator — they are DIFFERENT ' +
         'quantities and must not be substituted for each other or for "rvol": ' +
-        '"liveRvol" = live cumulative premarket volume ÷ the trailing 90-session average ' +
+        '"liveRvol" = live cumulative premarket volume ÷ the trailing 30-session average ' +
         'cumulative volume AT THE SAME TIME OF MORNING (answers "is it busy for 08:00?"), ' +
         'with "liveRvolAsOf" giving the 15-minute ET grid cutoff that baseline came from — ' +
         'compare it to meta.asOf (when the live volume was sampled) to judge the small ' +
         'numerator/denominator time skew; and "premarketPaceRatio" = the same live volume ' +
-        '÷ the trailing 90-session average FULL premarket session (answers "what fraction ' +
+        '÷ the trailing 30-session average FULL premarket session (answers "what fraction ' +
         'of a typical entire premarket has it already done?", >1.0 = it already beat a ' +
         'normal premarket before the open). Both are null outside the premarket window or ' +
         'until the baseline is warm — never a fabricated ratio. ' +

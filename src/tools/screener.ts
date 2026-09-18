@@ -5,11 +5,32 @@
  * - screen_companies: Filter companies by price, volume, cash runway, float, market cap, etc.
  * - get_screener_fields: Available screener field metadata for building queries
  *
- * NOTE: dilution filters (dilution_risk, hasWarrants/hasConvertibles/hasActiveShelf/
- * hasActiveAtm, rofr_status) are intentionally NOT exposed here — dilution is a
- * dead/unreliable feature and must not ship via the public API/MCP. The backend
- * /screener route still supports those params (the live /companies dilution tab
- * uses them), they are simply not advertised or accepted through this tool.
+ * NOTE: the WITHDRAWN sec-extraction screener columns — `dilution_risk`
+ * (`company_screener_data.dilution_risk` / `dilution_risk_status`, retired by
+ * migration 20260901110000), `rofr_status`, `last_financing_type` and
+ * `last_financing_date` — are intentionally NOT exposed here. Those specific
+ * columns came from the dead sec-extraction store, their data is gone, and their
+ * resting state is NOT MEASURED; re-exposing any of them would publish absence as
+ * a favourable claim about named issuers.
+ *
+ * ⚠️ That is a statement about those four columns ONLY. It is NOT a statement
+ * about dilution as a product: the dilution snapshot pipeline is live and IS
+ * shipped via MCP — see `dilution.ts` (get_dilution_coverage / _risk / _snapshot /
+ * _instruments, get_baby_shelf_capacity, get_dilution_performance,
+ * get_dilution_history). Do not read this note as a ban on dilution tools, and do
+ * not add the withdrawn columns back to this screener.
+ *
+ * The four instrument booleans (hasWarrants / hasConvertibles / hasActiveShelf /
+ * hasActiveAtm) no longer exist ANYWHERE: they were WITHDRAWN 2026-09-03 along
+ * with their backing columns, so the backend /screener route no longer supports
+ * them either. This tool's choice never to expose them turned out to be right —
+ * it is the only screener surface that needed no change.
+ *
+ * `rofr_status` and `last_financing_type` / `last_financing_date` followed the
+ * same day (migration 20260903120000) — same dead sec-extraction source, same
+ * NOT MEASURED resting state. The backend no longer accepts either as a filter
+ * and `get_screener_fields` no longer advertises them, so again nothing changed
+ * here. Do not add them.
  */
 
 import { z } from 'zod/v3';
@@ -156,7 +177,7 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
       description:
         'Historical MARKET-WIDE premarket scan for a single PAST trade date. For the ' +
         'requested ET date, returns every ticker with that day\'s premarket (default) ' +
-        'session volume and its relative volume (RVOL) vs the trailing 90-day same-session ' +
+        'session volume and its relative volume (RVOL) vs the trailing 30-day same-session ' +
         'baseline — the SAME RVOL math as get_rvol_history, but across the whole market for ' +
         'one date instead of one ticker across many dates. Filter by RVOL, market cap, ' +
         'price, and float to backtest screens like "sub-$500M tickers with premarket ' +
@@ -174,7 +195,12 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
         'out with minBaselineVolume and/or minSessionVolume. The response "meta" also reports ' +
         'asOfApplied / asOfIgnored / asOfIgnoredReason, so a time-of-day request that could not ' +
         'be honoured is visible instead of quietly returning full-session numbers. ' +
-        'Charged per your API tier.',
+        'A price / market-cap / float filter can only be applied to a ticker company_screener_data ' +
+        'holds a value for, so a just-renamed or just-listed symbol cannot be rated against it. ' +
+        'Those rows are NEVER silently dropped: "meta.unscreened" always reports their count, the ' +
+        'filter families involved and the tickers, and includeUnscreened=true returns them in ' +
+        '"rows" tagged with "unscreenedFilters". Treat that tag as NOT MEASURED — the value is ' +
+        'unknown, not out of range. Charged per your API tier.',
       inputSchema: z.object({
         date: z
           .string()
@@ -187,7 +213,7 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
         minRvol: z
           .number()
           .optional()
-          .describe('Minimum RVOL (day session volume ÷ trailing 90-day baseline). Drops rows whose baseline is not yet warm.'),
+          .describe('Minimum RVOL (day session volume ÷ trailing 30-day baseline). Drops rows whose baseline is not yet warm.'),
         includeNoHistory: z
           .boolean()
           .optional()
@@ -238,6 +264,20 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
         maxPrice: z.number().optional().describe('Maximum latest price in USD.'),
         minFloat: z.number().optional().describe('Minimum public float (shares).'),
         maxFloat: z.number().optional().describe('Maximum public float (shares).'),
+        includeUnscreened: z
+          .boolean()
+          .optional()
+          .describe(
+            'Also return rows that could not be RATED against the price / market-cap / float ' +
+              'bounds above, because company_screener_data holds no value for them — typically ' +
+              'a symbol renamed or listed within the last day (the source is an FMP screener ' +
+              'that lags a rename by ~a day). Each such row carries "unscreenedFilters" naming ' +
+              'the families that could not be applied, and the matching value field is null. ' +
+              'READ THAT AS NOT MEASURED — never as "matched" or "did not match". Default ' +
+              'false, in which case those rows are excluded from "rows" but are STILL reported ' +
+              'in meta.unscreened (count / columns / tickers), so they are never silently ' +
+              'dropped. Inert unless a price, market-cap or float filter is supplied.',
+          ),
         limit: z
           .number()
           .int()
@@ -254,7 +294,7 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
             'Optional TRUE time-of-day premarket basis. Any HH:MM ET premarket time; ' +
               'snapped to the nearest 15-minute grid cutoff (04:00–09:15, ties resolve to ' +
               'the earlier cutoff). When set, RVOL is cumulative premarket volume known BY ' +
-              'that cutoff ÷ the 90-day average of the SAME cutoff — a real time-of-day ' +
+              'that cutoff ÷ the trailing baselineDays (default 30) average of the SAME cutoff — a real time-of-day ' +
               'comparison, not the full 04:00–09:30 session. Each returned row carries a ' +
               '"basis" field: "asof-0700" (the snapped cutoff actually used) when a ' +
               'precomputed row exists, else "full-session" (automatic per-row fallback — ' +
@@ -278,14 +318,16 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
           .optional()
           .describe(
             'Rolling RVOL baseline window, in trading rows (same-session days). ' +
-              'Default 90; values outside 20-250 are clamped. This is the DENOMINATOR ' +
+              'Default 30; values outside 20-250 are clamped. This is the DENOMINATOR ' +
               'window: every RVOL in the response is that period\'s volume divided by ' +
               'the average of the trailing N same-session (or same-cutoff) days, ' +
               'excluding the day itself. A SHORTER window tracks recent regime changes ' +
               'faster and is noisier; a LONGER one is smoother and slower to react. The ' +
-              'warm-up lookback and the minimum-warm-days gate scale with it ' +
-              'automatically, so a wide window is never under-filled into an inflated ' +
-              'ratio. Omit for the standard 90-day baseline.',
+              'warm-up lookback scales with it automatically, so a wide window is never ' +
+              'under-filled into an inflated ratio; the minimum-warm-days gate (20 prior ' +
+              'sessions) does NOT scale down, so at the 30-row default a ticker needs ' +
+              '20 of its last 30 sessions populated before rvol is non-null. Omit for ' +
+              'the standard 30-day baseline; pass 90 for the pre-2026-09 window.',
           ),
       }),
       annotations: { readOnlyHint: true },

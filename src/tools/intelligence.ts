@@ -11,7 +11,6 @@
  * - get_institution_detail: Detailed info for a specific institution
  * - get_institution_holdings: Full portfolio holdings for an institution
  * - get_banks: Investment bank relationships from SEC filings
- * - get_legal_counsels: Legal counsel relationships with role taxonomy
  * - get_insider_transactions: Detailed Form 4 transaction history
  * - get_insider_cluster_buys: Cluster buying pattern detection
  * - get_institution_activity: Institution position changes over recent 13F periods (by CIK)
@@ -423,26 +422,6 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
     },
     async ({ ticker }) =>
       toolHandler(() => client.get(`/intelligence/${encodeURIComponent(ticker)}/banks`)),
-  );
-  */
-
-  // DISABLED: get_legal_counsels — part of the dropped legal-counsels feature (page disabled for months)
-  /*
-  server.registerTool(
-    'get_legal_counsels',
-    {
-      title: 'Get Legal Counsel Relationships',
-      description:
-        'Get legal counsel relationships for a company from SEC filings. Shows law firm engagements ' +
-        'with role taxonomy (issuer counsel, underwriter counsel, etc.), partner names, and filing dates. ' +
-        'Useful for identifying which firms advise on dilutive transactions.',
-      inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
-      }),
-      annotations: { readOnlyHint: true },
-    },
-    async ({ ticker }) =>
-      toolHandler(() => client.get(`/intelligence/${encodeURIComponent(ticker)}/legal-counsels`)),
   );
   */
 

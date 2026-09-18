@@ -1,7 +1,7 @@
 /**
  * MCP Server Integration Tests
  *
- * Verifies that all 90 tools, 3 prompts, and 2 resources are registered
+ * Verifies that all 101 tools, 3 prompts, and 2 resources are registered
  * correctly with proper metadata, annotations, and handler behavior.
  */
 
@@ -19,7 +19,7 @@ import { CapturingServer, createMockClient, type CapturedTool } from './helpers.
 
 /* ── Expected registrations ───────────────────────────────────────── */
 
-// Authoritative set of tools registered at runtime (88). Derived by running
+// Authoritative set of tools registered at runtime (101). Derived by running
 // registerAllTools() and confirmed byte-for-byte against the live
 // mcp.signal8.ai tools/list. Keep sorted; the count + "no unexpected tools"
 // assertions below guard drift.
@@ -29,12 +29,19 @@ const EXPECTED_TOOLS = [
   'get_analyst_coverage',
   'get_analyst_estimates',
   'get_analyst_grades',
+  'get_baby_shelf_capacity',
   'get_cash_history',
   'get_cash_position',
   'get_cash_runway_calendar',
   'get_clinical_trials',
   'get_company_profile',
   'get_compliance',
+  'get_dilution_coverage',
+  'get_dilution_history',
+  'get_dilution_instruments',
+  'get_dilution_performance',
+  'get_dilution_risk',
+  'get_dilution_snapshot',
   'get_donor_aggregates',
   'get_earnings',
   'get_earnings_calendar',
@@ -97,6 +104,7 @@ const EXPECTED_TOOLS = [
   'get_quote',
   'get_recent_congressional_votes',
   'get_recent_material_filings',
+  'get_recent_uplistings',
   'get_recently_sponsored_bills',
   'get_rvol_history',
   'get_senate_trades_by_ticker',
@@ -105,6 +113,7 @@ const EXPECTED_TOOLS = [
   'get_stock_price_change',
   'get_top_movers',
   'get_trading_halts',
+  'get_upcoming_reverse_splits',
   'get_volume_profile',
   'lookup_accession_number',
   'screen_companies',
@@ -152,8 +161,8 @@ beforeAll(() => {
 /* ── Tool registration ────────────────────────────────────────────── */
 
 describe('tool registration', () => {
-  it('registers exactly 92 tools', () => {
-    expect(server.tools).toHaveLength(92);
+  it('registers exactly 101 tools', () => {
+    expect(server.tools).toHaveLength(101);
   });
 
   it.each(EXPECTED_TOOLS)('registers tool: %s', (name) => {
