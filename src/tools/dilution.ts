@@ -17,7 +17,7 @@
  * whole subsystem exists to prevent (sold copy about named issuers, Securities Act
  * §17(b)). Every description therefore states, in words the model must not have to infer:
  * that absence is NOT MEASURED; that the transport always returns 200 so `available` /
- * `reason` is the thing to read; and that the data is add-on gated. Do not "tighten" a
+ * `reason` is the thing to read; and that the data is Signal8 Pro gated. Do not "tighten" a
  * description by deleting one of those sentences — they are asserted by
  * `__tests__/dilution.test.ts`, which is the ONLY enforcement this surface has.
  *
@@ -71,11 +71,23 @@ const ALWAYS_200 =
   'outage is a 5xx). Never report a company as having no dilution on the strength of ' +
   'an unavailable response.';
 
-/** Entitlement is per-user add-on, NOT a tier. */
+/**
+ * Entitlement is the Signal8 Pro TIER.
+ *
+ * ⚠️ CORRECTED 2026-09-21. This constant read "Requires the Dilution Snapshots
+ * add-on — … 403 with code ADDON_REQUIRED, which is an add-on purchase
+ * requirement and is DISTINCT from a subscription-tier upgrade", and it is
+ * interpolated into SEVEN tool descriptions. Both halves became false at the
+ * 2026-09-14 fold: Dilution Snapshots are part of Pro, the add-on is no longer
+ * sold, and the routes behind these tools now answer FEATURE_NOT_AVAILABLE /
+ * requiredTier 'pro'. A model reading the old text told a denied user to buy a
+ * SKU that does not exist AND explicitly not to upgrade — the exact inversion
+ * of the truth.
+ */
 const ADDON =
-  'Requires the Dilution Snapshots add-on — without it the call returns 403 with code ' +
-  'ADDON_REQUIRED, which is an add-on purchase requirement and is DISTINCT from a ' +
-  'subscription-tier upgrade.';
+  'Included in Signal8 Pro — without it the call returns 403 with code ' +
+  'FEATURE_NOT_AVAILABLE and `requiredTier: "pro"`. That is a subscription-tier ' +
+  'upgrade, not an add-on purchase; there is no separate add-on to buy.';
 
 /** Provenance and basis. */
 const AS_OF =

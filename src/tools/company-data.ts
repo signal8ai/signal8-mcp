@@ -87,27 +87,57 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Get Float Data',
       description:
-        'Get float data for a company: floatShares, source, floatDefinition, and as-of date. ' +
-        'Use when analyzing share supply. ' +
+        'Get float data for a company: floatShares, floatDefinition, as-of date, and — when the ' +
+        'headline float is WITHHELD — the bounds and labelled stand-ins that replace it. Use when ' +
+        'analyzing share supply. ' +
+        'CARDINAL RULE: null / absent / withheld means NOT MEASURED — never "no float", never "no ' +
+        'restricted shares", never zero. A numeric 0 is a MEASURED zero and passes a null check, so ' +
+        'decide from the reason/marker field ("floatWithheldReason", "restrictedBlockCount", ' +
+        '"provenance", "direction"), never from the value alone. ' +
         'IMPORTANT: check "floatDefinition" to know which float you are reading — ' +
         '"tradeable" (shares outstanding minus affiliates minus restricted/unregistered blocks: ' +
         'what can actually reach the tape; used on filing-derived dilution-snapshot tickers), ' +
         '"non_affiliate" (the SEC I.B.6 figure, which INCLUDES restricted shares held by ' +
         'non-affiliates — not what a trader means by float), "non_affiliate_estimate" ' +
         '(approximated from ownership filings), or "free_float" (vendor methodology). ' +
+        'TODAY "floatDefinition" and "source" are only present on dilution-snapshot results: a ' +
+        'vendor-sourced float arrives with neither (just floatShares, asOfDate, floatEstimated) ' +
+        'because vendors are not named — read an ABSENT floatDefinition as "not a filing-derived ' +
+        'tradeable float" and do not assume it is tradeable. ' +
         'On snapshot tickers "nonAffiliateFloatShares" carries the SEC I.B.6 figure separately — ' +
         'it is the ONLY correct input to baby-shelf / I.B.6 shelf-capacity math; never use the ' +
         'tradeable float there, and never present the non-affiliate figure as tradeable supply. ' +
         'floatShares:null with "floatWithheldReason" set ("restricted_blocks_unnetted" | ' +
-        '"stated_figure_impossible" | "affiliate_basis_stale" | "affiliate_figure_declined") means ' +
-        'the figure was deliberately WITHHELD, not unavailable — do not substitute a vendor float. ' +
-        'On "affiliate_basis_stale", "affiliateBasis.floatLowerBound" / "floatUpperBound" are a RANGE ' +
-        'the float lies in (both ends or neither; null = not measurable) — a range to state, never ' +
-        'a number to compute with. "restrictedShares":null means NOT MEASURED (a block ' +
-        'exists whose size the filings do not state), NEVER zero; "restrictedBlockCount":0 is an ' +
-        'answer, not an absence. "affiliateBasisStale" (with basisSpanDays/affiliateAnchorDate) ' +
-        'labels a float whose affiliate table is materially older than its share count — the ' +
-        'number itself is unchanged.',
+        '"stated_figure_impossible" | "affiliate_basis_stale" | "affiliate_figure_declined" | ' +
+        '"affiliate_unreconciled" | "share_count_unavailable" | "split_post_dates_basis") means the figure was deliberately ' +
+        'WITHHELD, not unavailable — do not substitute a vendor float of your own. A withheld ' +
+        'result may carry up to four stand-ins, each labelled IN the object; NONE is a float and ' +
+        'NONE may be fed to a market cap, a percent-of-float, a short-interest ratio, a screen, a ' +
+        'sort or a comparison: ' +
+        '(1) "tradeableFloatCeiling" is an UPPER BOUND — the tradeable float is AT MOST this; ' +
+        'render it with "<=" and nothing else (null = no bound stateable, never 0). ' +
+        '(2) "affiliateBasis.floatLowerBound" / "floatUpperBound" are a RANGE the float lies in — ' +
+        '"between X and Y"; each end is null independently when not measurable, so state the ends ' +
+        'that exist as inequalities. This object also appears on PUBLISHED floats with both ends ' +
+        'equal to floatShares — it is a bound only when floatShares is null. ' +
+        '(3) "floatEstimate" is a BADGED ESTIMATE {shares, basis, direction, confidence}: "basis" ' +
+        'is the itemised working (quote it), "direction" says which way it errs ("overstates" = the ' +
+        'true float is at most shares; "understates" = at least; "unknown"), "confidence" ' +
+        'describes the estimate, not a float. Today it is populated only on affiliate_basis_stale ' +
+        'and null is the ordinary outcome. An estimate never becomes floatShares — present shares ' +
+        'WITH basis and direction, never alone. Unrelated to the boolean "floatEstimated", which ' +
+        'flags a published floatShares back-derived from a USD public-float disclosure. ' +
+        '(4) "vendorFallback" is a third-party free-float figure {floatShares, provenance:"vendor", ' +
+        'floatDefinition:"free_float", asOfDate, splitAdjusted} offered beside the withhold — NOT ' +
+        'our number, NOT on the tradeable definition, already refused when our filings refute it. ' +
+        'Present it as the vendor free float as of its own date, never in the "Float" slot. ' +
+        '"restrictedShares":null means NOT MEASURED (a block exists whose size the filings do not ' +
+        'state), NEVER zero; "restrictedBlockCount":0 is an answer, not an absence. ' +
+        '"affiliateBasisStale" (with basisSpanDays/affiliateAnchorDate) labels a float whose ' +
+        'affiliate table is materially older than its share count — the number itself is ' +
+        'unchanged. "tradeableBasis":"convention_conservative" means the filings did not answer ' +
+        'and a published convention resolved it — see "tradeableConvention" and do not present ' +
+        'the figure as exact.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),

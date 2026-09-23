@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-09-23
+
+### Changed
+
+- **Dilution tools are part of Signal8 Pro, not an add-on.** The seven dilution
+  tools and `get_cash_position` said they required the "Dilution Snapshots
+  add-on" and returned `403 ADDON_REQUIRED` without it. That add-on is no longer
+  sold. Access now comes with the Pro tier, and a denial is
+  `403 FEATURE_NOT_AVAILABLE` with `requiredTier: "pro"`. The old wording sent
+  agents looking for a product that doesn't exist and an error code the API no
+  longer returns.
+
+### Fixed
+
+- **`get_float` describes the float contract as the API actually returns it.**
+  It now documents `tradeableFloatCeiling` (an upper bound, "at most X"),
+  `affiliateBasis.floatLowerBound` / `floatUpperBound` (a range, whose two ends
+  can each be null on their own), `floatEstimate` (a badged estimate that is
+  never promoted into `floatShares`), and `vendorFallback`. It lists all seven
+  `floatWithheldReason` values, adding `split_post_dates_basis`: the share basis
+  pre-dates a reverse split and can't be restated. Two things the old text got
+  wrong: it said the bounds come "both ends or neither", and it implied
+  `affiliateBasis` only appears on withheld results.
+- 🔴 **Not measured is not zero.** A bound must never be fed into a market cap,
+  a percent-of-float or a short-interest ratio. A null or absent float means it
+  was not measured, never "no float". A numeric `0` is a measured zero and will
+  pass a null check, so consumers must gate on the reason field, not the value.
+
 ## [0.16.0] - 2026-09-18
 
 ### Added

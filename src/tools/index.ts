@@ -53,7 +53,7 @@
  *     get_political_sector_rotation, get_cross_politician_donor_trade_overlap
  * - Cash Position: get_cash_position, get_cash_history, screen_must_raise,
  *     get_burn_rate_comparison, get_offerings_since_anchor, get_cash_runway_calendar
- * - Dilution (add-on gated): get_dilution_coverage, get_dilution_risk,
+ * - Dilution (Signal8 Pro tier): get_dilution_coverage, get_dilution_risk,
  *     get_dilution_snapshot, get_dilution_instruments, get_baby_shelf_capacity,
  *     get_dilution_performance, get_dilution_history
  * - Intraday: get_intraday_bars, get_volume_profile, get_accumulation_snapshot
@@ -178,7 +178,7 @@ export function registerAllTools(server: McpServer, client: Signal8ApiClient): v
   registerEtfTools(server, client);           // get_etf_bundle
   registerPoliticianTools(server, client);   // 19 politician trading tools (STOCK Act + committees + bills + votes + P&L + discovery)
   registerCashPositionTools(server, client); // 6 cash position & runway tools
-  registerDilutionTools(server, client);     // 7 dilution tools (add-on gated): coverage, risk, snapshot, instruments, ib6, performance, history
+  registerDilutionTools(server, client);     // 7 dilution tools (Signal8 Pro tier): coverage, risk, snapshot, instruments, ib6, performance, history
   registerIntradayTools(server, client);    // 3 intraday analysis tools (bars, volume profile, accumulation)
   // DISABLED: macro feeds are dormant upstream (ai-api serves no eia-petroleum/commodity-price items) — get_eia_petroleum, get_commodity_alerts, get_macro_feed
   // registerMacroTools(server, client);

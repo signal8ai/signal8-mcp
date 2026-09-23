@@ -73,7 +73,8 @@ export function registerCashPositionTools(server: McpServer, client: Signal8ApiC
         'is populated: `pending` and `announced` are null with reason `scenario_not_modelled` ' +
         'because the extraction records only REALIZED cash-raising events and never models ' +
         'speculative raises. Do not infer them from shelf or ATM capacity. ' +
-        'Requires the Dilution Snapshots add-on (403 ADDON_REQUIRED without it).',
+        'Included in Signal8 Pro (403 FEATURE_NOT_AVAILABLE, requiredTier "pro", without it). '+
+        'That is a tier upgrade, not an add-on purchase — the add-on is no longer sold.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),

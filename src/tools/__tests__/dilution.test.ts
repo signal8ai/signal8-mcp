@@ -84,12 +84,23 @@ describe('dilution tools', () => {
     },
   );
 
-  it.each(ALL_TOOLS)('%s states the Dilution Snapshots add-on requirement', (name) => {
+  // ⚠️ CORRECTED 2026-09-21. This block asserted the description contained
+  // 'Dilution Snapshots add-on', 'ADDON_REQUIRED' and 'subscription-tier
+  // upgrade' (as the thing it is DISTINCT from). All three became false at the
+  // 2026-09-14 fold, and these assertions PINNED them — so the seven tool
+  // descriptions kept telling models to send denied users to buy a retired SKU
+  // and to avoid upgrading, with a green suite.
+  it.each(ALL_TOOLS)('%s states the Signal8 Pro tier requirement', (name) => {
     const d = toolMap.get(name)!.config.description!;
-    expect(d).toContain('Dilution Snapshots add-on');
-    expect(d).toContain('ADDON_REQUIRED');
-    // Distinct from a tier upgrade — the FE routes these two differently.
-    expect(d).toContain('subscription-tier upgrade');
+    expect(d).toContain('Signal8 Pro');
+    expect(d).toContain('FEATURE_NOT_AVAILABLE');
+    expect(d).toContain('requiredTier');
+  });
+
+  it.each(ALL_TOOLS)('%s never names a retired add-on purchase', (name) => {
+    const d = toolMap.get(name)!.config.description!;
+    expect(d).not.toContain('ADDON_REQUIRED');
+    expect(d).not.toMatch(/Dilution Snapshots add-on/);
   });
 
   it.each(ALL_TOOLS)('%s says the HTTP status is not the verdict', (name) => {
