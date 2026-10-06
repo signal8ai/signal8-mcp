@@ -77,13 +77,12 @@ Set the `SIGNAL8_API_KEY` environment variable and run:
 SIGNAL8_API_KEY=sk_live_your_key_here npx @signal8ai/mcp
 ```
 
-## Available Tools (86)
+## Available Tools (104)
 
-The server exposes **86 live tools** at runtime. The reference tables below are
-a representative catalog grouped by domain; several documented tools and whole
-categories (e.g. Extractions and Dilution) are currently disabled and are not
-registered live, so individual section counts below may exceed what is actually
-exposed.
+The server exposes **104 live tools** at runtime. The reference tables below are
+a representative catalog grouped by domain, not an exhaustive list; the
+Extractions section documents tools that are currently disabled and not
+registered live. The authoritative list is what `tools/list` returns.
 
 ### Companies (3 tools)
 
@@ -131,6 +130,41 @@ exposed.
 | `get_filing_calendar` | 10-K / 10-Q SEC filing-deadline calendar by universe | 5 |
 | `get_lockup_expirations` | Upcoming IPO/secondary lockup expirations | 5 |
 | `get_recent_material_filings` | Recent material 8-K filings by index universe and item codes | 5 |
+
+### SEC Filings & EDGAR archive (10 tools)
+
+Backed by Signal8's own archive of SEC EDGAR filings — October 2021 to today
+(about 3.9M filings), full-text indexed and updated through the day. Filings
+older than 2021-10 may be absent, so an empty result is not proof a filing was
+never made. Record-only rows (`bodyStored: false`) carry metadata but no body.
+
+| Tool | Description | Credits |
+|------|-------------|---------|
+| `search_sec_filings` | Filings by CIK, form, date, 8-K items, excluded forms, full-text `q` (websearch syntax), and **company filters** (market cap, float, price, sector, industry, exchange, company type, foreign issuer, recent IPO) | 5 |
+| `get_filing_documents` | Every document in a filing (type, size, `stored`, `secUrl`) with the `filingId` / `exhibitId` to read each one | 5 |
+| `get_filing_structured` | Parsed Form 3/4/5 transactions, 13F holdings (values normalised to dollars), XML SCHEDULE 13D/G | 5 |
+| `get_filing_document` | Full text of a filing by filing id | 10 |
+| `get_filing_exhibits` | Readable exhibits of a filing, with ids | 5 |
+| `get_exhibit_content` | Full text of one exhibit | 10 |
+| `search_filing_text` | Exhibit-level full-text search returning the matching passage | 5 |
+| `lookup_accession_number` | Accession number → filing id and metadata | 5 |
+| `screen_sec_filings` | Filings across companies by sector / industry / exchange / market cap | 10 |
+| `screen_sec_filings_performance` | Price returns +1/+3/+7/+30 days after filings, with aggregates | 10 |
+
+**Company filters** on `search_sec_filings` follow the same rules as the
+signal8.ai/sec-filings page: they are applied from the archive only, against
+the filer's own CIK, on issuer-filed forms only (Form 4, 144 and SCHEDULE 13D/G
+are dropped and reported in `companyFilter.droppedForms`). Companies with no
+measured value for a filter are excluded and counted in `companyFilter.unknown`.
+Unknown values return a 400 listing the valid names. If the archive cannot
+answer, the call fails with `COMPANY_FILTER_NOT_APPLIED` and a reason rather
+than returning unfiltered rows.
+
+**13F values:** the SEC changed the unit of a 13F `<value>` from thousands of
+dollars to whole dollars for filings on/after 2023-01-03.
+`get_filing_structured` returns `valueUsd` / `totalMarketValueUsd` normalised to
+dollars (null when the unit cannot be determined) next to the raw
+`valueThousands`, and `valueUnit` says which unit the raw number is in.
 
 ### Extractions (4 tools)
 

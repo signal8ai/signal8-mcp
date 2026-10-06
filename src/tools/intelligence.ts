@@ -119,7 +119,10 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
         '13F institutional holdings, and 13D/13G activist positions. All entities are resolved ' +
         'across the three SEC form types into a single view with counterparty resolution. ' +
         'The allHolders array is paginated via limit/offset (default 100). Aggregate stats ' +
-        '(institutional/insider/beneficial/retail totals and percentages) are always included in full.',
+        '(institutional/insider/beneficial totals and percentages, plus the `retail` residual) are always included in full. ' +
+        '`retail` is the UNATTRIBUTED residual: shares no filing accounts for, which includes recent offering buyers ' +
+        'and acquisition holders who have not filed as well as retail investors — an upper bound on retail, never a retail count. ' +
+        'When `retail.reason` is `filed_exceeds_outstanding` the residual is withheld (null) because the counted filings exceed the shares outstanding.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
         limit: z.number().int().min(1).max(100)
@@ -598,7 +601,8 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
         'Discover insider trading patterns across multiple companies. Unlike get_insiders which shows ' +
         'insider activity for a single ticker, this tool searches the entire universe to find insiders ' +
         'active across multiple companies, cluster buying patterns, and large transactions. Filter by ' +
-        'insider name, transaction type, or date range. Useful for detecting coordinated insider activity, ' +
+        'insider name, transaction type, or date range. Cluster buying is computed only for purchases ' +
+        '(transactionType P, the default). Useful for detecting coordinated insider activity, ' +
         'cross-company insider networks, and market-wide buying/selling trends.',
       inputSchema: z.object({
         insiderName: z.string().optional().describe(
@@ -608,10 +612,11 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
           'Filter by transaction type: "P" (purchase), "S" (sale), "A" (grant/award), "M" (conversion)',
         ),
         startDate: z.string().optional().describe(
-          'Start date for transaction range in ISO format (e.g., "2025-01-01")',
+          'Start date, YYYY-MM-DD (e.g., "2025-01-01"); a full ISO timestamp is cut to its date. ' +
+          'Either bound may be given alone. An unparseable date is rejected, never ignored.',
         ),
         endDate: z.string().optional().describe(
-          'End date for transaction range in ISO format (e.g., "2025-12-31")',
+          'End date, YYYY-MM-DD (e.g., "2025-12-31"); a full ISO timestamp is cut to its date.',
         ),
         limit: z.number().min(1).max(100).optional().describe(
           'Maximum results to return (default: 10, max: 100)',

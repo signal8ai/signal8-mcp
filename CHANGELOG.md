@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-04
+
+### Added
+
+- **Company filters on `search_sec_filings`** — `minMarketCap` / `maxMarketCap`,
+  `minFloat` / `maxFloat`, `minPrice` / `maxPrice`, `sectors`, `industries`,
+  `exchanges` (NASDAQ, NYSE, AMEX = NYSE American, OTC), `companyTypes`
+  (operating, fund, spac), `foreignIssuer` and `recentIpo`. Same contract as the
+  signal8.ai/sec-filings page: served only from Signal8's archive, against the
+  filer's own CIK, on issuer-filed forms only (third-party forms such as Form 4
+  and SCHEDULE 13D/G are dropped and listed in `companyFilter.droppedForms`).
+  Companies with no measured value for a filter are excluded and counted in
+  `companyFilter.unknown`. Unknown values are a 400 that lists the valid names.
+  When the archive cannot answer, the call fails with
+  `COMPANY_FILTER_NOT_APPLIED` and a reason; it never returns unfiltered rows.
+  Company-filtered results are cursor-paged.
+- **`get_filing_documents`** — every document in a filing by accession number
+  (type, description, size, `stored`, `secUrl`), plus the `filingId` and each
+  document's `exhibitId`, so the agent can go straight to
+  `get_exhibit_content` / `get_filing_document`. Wraps
+  `GET /api/v1/public/edgar/accession/:acc/documents`.
+- **`get_filing_structured`** — parsed Form 3/4/5 (per-transaction table with
+  exercise prices, ownership nature, owner relationships including the filer's
+  own "Other" text), 13F-HR holdings and XML SCHEDULE 13D/G. 13F values are
+  normalised to dollars (`valueUsd`, `totalMarketValueUsd`, `valueUnit`),
+  because the SEC changed the `<value>` unit from thousands to dollars on
+  2023-01-03. Holdings are capped by `holdingsLimit` with `holdingsTotal` /
+  `holdingsTruncated`. Wraps the new
+  `GET /api/v1/public/edgar/accession/:acc/structured` (Pro).
+- **`get_politician_disclosures`** — a per-DISCLOSURE politician trade feed:
+  one item per congressional STOCK Act PTR or executive OGE 278-T with at least
+  one trade at or above `minAmount` (bracket lower bound, default 50001), each
+  carrying every trade of the report. Pass the returned `nextCursor` back as
+  `since` to receive each disclosure exactly once; without `since` only the last
+  48h is returned. Wraps `GET /api/v1/public/politicians/disclosures` (Pro).
+
+### Changed
+
+- **EDGAR tool descriptions describe the archive.** Every EDGAR tool now states
+  its coverage (filings from October 2021 to today; older filings may be absent,
+  so an empty result is not proof of absence), that record-only rows
+  (`bodyStored: false`) have no readable body, and how ids chain between tools.
+  `search_sec_filings` documents the websearch query grammar, `totalRelation` /
+  `totalEstimate`, and relevance ranking over the newest 500 matches (250 for a
+  quoted phrase; the old text said 1,000). `search_filing_text` explains when to
+  use it instead of `search_sec_filings` with `q`.
+- **`search_sec_filings` responses carry `searchIndex`, `totalEstimate`,
+  `appliedFilters` and `notes`.** An empty full-text result is only definitive
+  when `searchIndex.complete` is true; otherwise `notes` says the index has not
+  confirmed full coverage. Before this the API dropped both fields, so an
+  unconfirmed zero looked like "no matches".
+- Company-filtered rows use the same keys as unfiltered ones (`id` = the
+  filingId, `cik`, `company_name`, `accession_number`, `form_type`, …) plus
+  `ticker`, so they chain into `get_filing_document` the same way.
+
+### Removed
+
+- The commented-out `get_exhibit_ai_extractions` registration and its mentions
+  in the tool registry header (the tool has not been exposed since 2026-06).
+
 ## [0.16.1] - 2026-09-23
 
 ### Changed

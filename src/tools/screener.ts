@@ -51,6 +51,13 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
     {
       title: 'Screen Companies',
       description:
+        'Since 2026-10-03 the float column ALWAYS carries the dilution snapshot\'s own figure when the snapshot has one: ' +
+        '"float" is the measured POINT float (null on a withheld snapshot row), and such a row then carries ' +
+        '"floatEstimate" (shares) + "floatEstimateBound" ("point" ~ / "ceiling" <= / "floor" >=) + "floatEstimateBasis" ' +
+        '(the working) — present it as the number with its marker, e.g. "<= 7,953,957". minFloat / maxFloat and the ' +
+        'computed_float sort compare the figure\'s VALUE (COALESCE of the two), so a bounded row is kept; a row with ' +
+        'neither is NOT MEASURED, never 0. 🔴 Never feed floatEstimate into a market cap, a percent-of-float or a ' +
+        'short-interest ratio — a bound is not a point. ' +
         'Screen companies by price range, volume, cash runway, float, shares outstanding, ' +
         'market cap, industry, listing exchange (NASDAQ/NYSE/AMEX), and float data source. ' +
         'Sort results by any sortable column. ' +

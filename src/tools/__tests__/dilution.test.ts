@@ -162,6 +162,11 @@ describe('dilution tools', () => {
     expect(d).toContain('suppressed');
     // "$0 raisable" is a claim; a suppressed figure is not stateable.
     expect(d).toContain('NEVER as $0 raisable');
+    // 2026-09-27 (VRAX): an unmeasured float is `constraintApplies: null`, and
+    // the tool must say it is NOT the "cap does not bind" finding.
+    expect(d).toContain('`constraintApplies: null`');
+    expect(d).toContain('float_unmeasured');
+    expect(d).toContain('NEVER as unlimited');
     expect(d).toContain('I.B.6');
   });
 
@@ -206,6 +211,15 @@ describe('dilution tools', () => {
     expect(schema.safeParse({ ticker: 'VNRX', family: 'shelves' }).success).toBe(false);
     expect(schema.safeParse({ ticker: 'VNRX', family: 'dilution' }).success).toBe(false);
     expect(schema.safeParse({ ticker: 'VNRX' }).success).toBe(false);
+  });
+
+  it('get_dilution_instruments says the stored shelf capacity is DATED and points at get_baby_shelf_capacity for the live figure', () => {
+    const d = toolMap.get('get_dilution_instruments')!.config.description!;
+    expect(d).toContain('babyShelfCurrentCapacityDollars');
+    expect(d).toContain('babyShelfCapacityAsOf');
+    expect(d).toMatch(/NOT TODAY'S HEADROOM/);
+    expect(d).toContain('get_baby_shelf_capacity');
+    expect(d).toMatch(/never present the stored figure as current/);
   });
 
   it('names every family in its own description so the model can pick one', () => {

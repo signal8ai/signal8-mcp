@@ -115,6 +115,13 @@ describe('donor tools (task-2067)', () => {
     );
   });
 
+  it('get_donor_trade_overlap does not claim exec- slugs return an empty list (task-2138)', () => {
+    const desc = toolMap.get('get_donor_trade_overlap')!.config.description as string;
+    expect(desc).not.toMatch(/empty list\.?'?$/i);
+    expect(desc).not.toMatch(/Executive-branch slugs return an empty list/i);
+    expect(desc).toMatch(/exec-\) slugs are supported/);
+  });
+
   it('url-encodes slug', async () => {
     const t = toolMap.get('get_politician_donors')!;
     await t.handler({ slug: 'sen-foo bar' });

@@ -110,8 +110,8 @@ export function registerPolicyTools(server: McpServer, client: Signal8ApiClient)
         'signing, positive = traded N days after), matchBasis, and matchCount, plus a summary ' +
         '(totalFlags, totalEstimatedUsd, topSector). Defaults to trades 1-14 days BEFORE ' +
         'signing; same-day trades are always excluded (intraday ordering is unknowable). ' +
-        'Unlike get_donor_trade_overlap, executive-branch (exec-) slugs return REAL data ' +
-        'here: both congressional and executive trade sources feed the overlap computation.' +
+        'Executive-branch (exec-) slugs return REAL data here: both congressional and ' +
+        'executive trade sources feed the overlap computation.' +
         OVERLAP_DISCLAIMER,
       inputSchema: z.object({
         slug: z.string().describe(

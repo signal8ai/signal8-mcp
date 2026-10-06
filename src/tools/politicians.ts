@@ -9,6 +9,7 @@
  * - get_politicians_most_active: Most active politicians (discovery)
  * - get_politician_recent_trades: Recent trades across all politicians (discovery)
  * - get_politician_late_filers: STOCK Act late filing violations (discovery)
+ * - get_politician_disclosures: Per-disclosure PTR / 278-T feed with an exactly-once polling cursor (discovery)
  * - get_politician_committees: Committee assignments for a politician
  * - get_politician_sponsored_bills: Sponsored legislation for a politician
  * - get_politician_votes: Voting records for a politician
@@ -222,6 +223,57 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
         }
       }
       return toolHandler(() => client.get('/senate-insiders/discovery/recent-trades', queryParams));
+    },
+  );
+
+  // ── Discovery: Per-Disclosure Feed (cursor) ──────────────────────
+
+  server.registerTool(
+    'get_politician_disclosures',
+    {
+      title: 'Get Politician Disclosures (Feed)',
+      description:
+        'Per-DISCLOSURE feed of politician trades: one item per congressional STOCK Act periodic ' +
+        'transaction report (PTR) or executive-branch OGE Form 278-T that contains at least one trade ' +
+        'whose bracket LOWER bound is >= minAmount. Each item carries the politician, filing link, ' +
+        'filing delay, and ALL trades of the report sorted largest bracket first, with ' +
+        'qualifyingTradeCount for how many clear the threshold. Built for polling: pass the returned ' +
+        'nextCursor back as `since` and each disclosure is returned exactly once (for the same ' +
+        'minAmount and kinds); keep nextCursor even when items is empty, and call again at once when ' +
+        'hasMore is true. Without `since` only disclosures that became complete in the last 48h are ' +
+        'returned. A report is emitted only after no new row of it has arrived for a settle window ' +
+        '(~8h), so items lag the filing by hours. Render amountRange (the filed bracket); amountMin ' +
+        'null means the bracket was not parsed (never $0), amountMax null means "Over $50,000,000" or ' +
+        'unparsed, ticker null means a non-equity asset.',
+      inputSchema: z.object({
+        since: z.string().optional().describe(
+          'Opaque cursor: the nextCursor from a previous call, verbatim. Omit only on the first call.',
+        ),
+        limit: z.number().int().min(1).max(100).optional().describe(
+          'Maximum disclosures to return (default: 50, max: 100)',
+        ),
+        minAmount: z.number().int().min(1).optional().describe(
+          'USD threshold compared to each trade\'s bracket lower bound (default: 50001). A disclosure ' +
+          'qualifies when ANY of its trades meets it.',
+        ),
+        kinds: z.array(z.enum(['congressional', 'executive'])).min(1).optional().describe(
+          "Which disclosure kinds to include (default: both). 'congressional' = STOCK Act PTRs " +
+          "(Senate + House), 'executive' = OGE 278-T (Cabinet-level officials).",
+        ),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ kinds, ...rest }) => {
+      const queryParams: Record<string, string> = {};
+      for (const [key, value] of Object.entries(rest)) {
+        if (value !== undefined) {
+          queryParams[key] = String(value);
+        }
+      }
+      if (kinds !== undefined) {
+        queryParams.kinds = kinds.join(',');
+      }
+      return toolHandler(() => client.get('/politicians/disclosures', queryParams));
     },
   );
 

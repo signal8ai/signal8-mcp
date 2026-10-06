@@ -32,7 +32,9 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'halted/haltCode/haltReason/haltedAt/resumptionAt trading-halt fields ' +
         '(false/null when trading normally); a halted ticker returns the last-known ' +
         'quote instead of an error, or currentPrice:null + halted:true when nothing ' +
-        'is recoverable.',
+        'is recoverable. marketCap is the live price × the SEC-derived share count; ' +
+        'when that count is unavailable it is null with marketCapWithheldReason set — ' +
+        'NOT MEASURED, never "no market cap" and never $0.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),
@@ -70,7 +72,13 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
       description:
         'Get short interest data for a company including short volume, short ratio, ' +
         'days to cover, and short percent of float. Use when analyzing bearish ' +
-        'sentiment or potential short squeeze setups.',
+        'sentiment or potential short squeeze setups. ' +
+        '🔴 "shortInterestPercent" null ALWAYS carries "shortInterestPercentReason" (since 2026-10-04): ' +
+        '"float_not_point" = the float on record is a snapshot BOUND or ESTIMATE (<= / >= / ~), and a ' +
+        'percent-of-float is never struck off a bound — do NOT divide "shortInterest" by a ceiling, floor or ' +
+        'estimate from get_float yourself; "float_unavailable" = no float of any kind on record; ' +
+        '"short_pct_of_float_unreconciled" = a point float existed but the ratio was implausible or the ' +
+        'split basis could not be resolved. A null percent is NOT MEASURED, never 0%.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),
@@ -109,8 +117,29 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'tradeable float there, and never present the non-affiliate figure as tradeable supply. ' +
         'floatShares:null with "floatWithheldReason" set ("restricted_blocks_unnetted" | ' +
         '"stated_figure_impossible" | "affiliate_basis_stale" | "affiliate_figure_declined" | ' +
-        '"affiliate_unreconciled" | "share_count_unavailable" | "split_post_dates_basis") means the figure was deliberately ' +
-        'WITHHELD, not unavailable — do not substitute a vendor float of your own. A withheld ' +
+        '"affiliate_unreconciled" | "share_count_unavailable" | "split_post_dates_basis" | "split_unconfirmed" | "snapshot_float_unconfirmed" | "refusal_evaluation_failed") means the figure was deliberately ' +
+        'WITHHELD by the snapshot AND no lower tier could answer — do not substitute a vendor float of your own. ' +
+        'Since 2026-09-29 a snapshot that withheld its float FALLS THROUGH: when a lower tier can answer, "source" ' +
+        'names that tier (computed / sec-10k / polygon / fmp), "floatShares" is ITS figure under ITS definition, and ' +
+        '"snapshotFloatWithheldReason" carries the snapshot\'s reason as context ("the filing-derived snapshot could ' +
+        'not state a float; showing <source>"). Read that field as provenance, never as a second refusal. ' +
+        '🔴 SINCE 2026-10-03 THE SNAPSHOT FIGURE ALWAYS HEADLINES: when the snapshot carries ANY figure — "floatEstimate" ' +
+        '(~ point / <= ceiling / >= floor), "tradeableFloatCeiling", or an "affiliateBasis" range — "floatShares" stays ' +
+        'null and THAT figure is the answer, with its label; a lower tier that also answered and passed the guard rides ' +
+        '"otherSourceFloat" {floatShares, source, provenance:"other_source", floatDefinition, asOfDate} as a SECONDARY ' +
+        '"other source" line — never the float, never arithmetic. A lower tier fills "floatShares" ONLY when the ' +
+        'snapshot carries no figure at all. 🔴 SINCE 2026-10-04 A TRIVIAL CEILING IS NOT A FIGURE: a snapshot ' +
+        'ceiling ("tradeableFloatCeiling", a "floatEstimate" with bound "ceiling", or an upper-only "affiliateBasis" ' +
+        'range) at or above 99% of the share count says only "the float is at most every issued share" and is ' +
+        'STRIPPED from the response (null), so the lower tier may headline under its own "source" with ' +
+        '"snapshotFloatWithheldReason" as context (GELS: Polygon 5.12M, not "<= 11.18M" on 11.18M shares). ' +
+        'Floors and point estimates are never stripped. ' +
+        'Since 2026-10-01 that fall-through is GUARDED: a lower-tier figure dated before a split the snapshot names, or ' +
+        'outside the snapshot\'s own floor / ceiling / point estimate, is REFUSED and the withheld envelope is served with ' +
+        '"fallbackRefusal" {reason: "fallback_predates_split" | "fallback_outside_snapshot_bounds", refusedSource, detail} ' +
+        'beside the snapshot\'s "floatWithheldReason". The refused figure is NOT in the response and must not be fetched ' +
+        'from a vendor to fill the gap — the detail says why no lower tier is shown either. A snapshot that stated a float ' +
+        'never carries it. A withheld ' +
         'result may carry up to four stand-ins, each labelled IN the object; NONE is a float and ' +
         'NONE may be fed to a market cap, a percent-of-float, a short-interest ratio, a screen, a ' +
         'sort or a comparison: ' +
@@ -123,8 +152,12 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         '(3) "floatEstimate" is a BADGED ESTIMATE {shares, basis, direction, confidence}: "basis" ' +
         'is the itemised working (quote it), "direction" says which way it errs ("overstates" = the ' +
         'true float is at most shares; "understates" = at least; "unknown"), "confidence" ' +
-        'describes the estimate, not a float. Today it is populated only on affiliate_basis_stale ' +
-        'and null is the ordinary outcome. An estimate never becomes floatShares — present shares ' +
+        'describes the estimate, not a float. Since 2026-09-29 it is the SNAPSHOT FLOAT LADDER figure ' +
+        'on any withheld snapshot ticker and may also carry "rung" ("non_affiliate_estimate" | ' +
+        '"shares_outstanding_ceiling" | "rolled_forward_lower_bound"), "bound" ("point" = about X, ' +
+        'render "~X"; "ceiling" = AT MOST X, render "<= X"; "floor" = AT LEAST X, render ">= X") and ' +
+        '"asOf"; a floor or ceiling is a BOUND, never a point value. null means no figure could be ' +
+        'derived from the snapshot\'s structured fields. An estimate never becomes floatShares — present shares ' +
         'WITH basis and direction, never alone. Unrelated to the boolean "floatEstimated", which ' +
         'flags a published floatShares back-derived from a USD public-float disclosure. ' +
         '(4) "vendorFallback" is a third-party free-float figure {floatShares, provenance:"vendor", ' +

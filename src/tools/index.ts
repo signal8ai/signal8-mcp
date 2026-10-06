@@ -2,16 +2,18 @@
  * Signal8 MCP Tools Registry
  *
  * Registers the live Signal8 MCP tools on the server, organized by domain.
- * 101 tools are exposed at runtime. The imported register* functions contain
- * 108 active server.registerTool() calls (further calls in these files are
+ * 104 tools are exposed at runtime. The imported register* functions contain
+ * 111 active server.registerTool() calls (further calls in these files are
  * block-commented out behind rights/data gates and are NOT counted); of those
- * 108, 7 are suppressed by the DISABLED_TOOLS set in registerAllTools(), leaving
- * 101. (The extractions/macro files are not imported at all.)
+ * 111, 7 are suppressed by the DISABLED_TOOLS set in registerAllTools(), leaving
+ * 104. (The extractions/macro files are not imported at all.)
  *
  * ⚠️ This count is hand-maintained and HAD DRIFTED — it read "90 exposed / 97
  * active" while the measured values were 92 / 99 (corrected 2026-09-07, when the
  * 7 dilution tools took it to 99 / 106; re-measured 2026-09-14 at 101 / 108 when
- * the 2 social-calendar tools landed). Derive it rather than trusting the prose:
+ * the 2 social-calendar tools landed; 102 / 109 with get_politician_disclosures, which
+ * did not update this line; 104 / 111 on 2026-10-04 with get_filing_documents and
+ * get_filing_structured). Derive it rather than trusting the prose:
  * strip block comments from each imported tools file, count `server.registerTool(`
  * occurrences, and subtract the DISABLED_TOOLS entries.
  *
@@ -26,10 +28,10 @@
  * - Trading Halts (feature-2260): get_trading_halts (active NASDAQ/NYSE/AMEX halts)
  * - Calendar: get_earnings_calendar, get_economic_calendar, get_filing_calendar,
  *     get_lockup_expirations, get_post_earnings_movers, get_recent_material_filings
- * - Extractions: get_extractions, get_filing_extractions, get_extraction_dashboard, get_extraction_by_type
- * - EDGAR Content: screen_sec_filings, screen_sec_filings_performance, search_sec_filings,
- *     get_filing_document, get_filing_exhibits, get_exhibit_content, get_exhibit_ai_extractions,
- *     search_filing_text, lookup_accession_number, get_edgar_companies
+ * - EDGAR Content (Signal8's SEC archive, 2021-10 → today): screen_sec_filings,
+ *     screen_sec_filings_performance, search_sec_filings (incl. company filters),
+ *     get_filing_documents, get_filing_structured, get_filing_document, get_filing_exhibits,
+ *     get_exhibit_content, search_filing_text, lookup_accession_number
  * - Intelligence: get_counterparties, get_counsel, get_insiders, get_ownership, get_rofr_triggers,
  *     get_institutions, get_institution_detail, get_institution_holdings,
  *     get_banks, get_insider_transactions, get_insider_cluster_buys,
@@ -50,7 +52,8 @@
  *     get_politician_votes, get_politician_pnl, get_politicians_pnl_leaderboard,
  *     get_politician_roles, get_recent_congressional_votes, get_senate_trades_by_ticker,
  *     get_recently_sponsored_bills, get_trending_politicians,
- *     get_political_sector_rotation, get_cross_politician_donor_trade_overlap
+ *     get_political_sector_rotation, get_cross_politician_donor_trade_overlap,
+ *     get_politician_disclosures
  * - Cash Position: get_cash_position, get_cash_history, screen_must_raise,
  *     get_burn_rate_comparison, get_offerings_since_anchor, get_cash_runway_calendar
  * - Dilution (Signal8 Pro tier): get_dilution_coverage, get_dilution_risk,
@@ -95,8 +98,8 @@ import { registerPremarketTools } from './premarket.js';
 import { registerSocialCalendarTools } from './social-calendar.js';
 
 /**
- * Register the live Signal8 MCP tools on the server (101 exposed at runtime:
- * 108 active server.registerTool() calls in the imported files minus the
+ * Register the live Signal8 MCP tools on the server (104 exposed at runtime:
+ * 111 active server.registerTool() calls in the imported files minus the
  * 7-entry DISABLED_TOOLS set below).
  *
  * Each tool wraps a `/api/v1/` endpoint with:
@@ -170,7 +173,7 @@ export function registerAllTools(server: McpServer, client: Signal8ApiClient): v
   registerCalendarTools(server, client);      // 5 calendar / material-filing tools
   // DISABLED: AI extractions feature deprecated — get_extractions, get_filing_extractions, get_extraction_dashboard, get_extraction_by_type
   // registerExtractionTools(server, client);
-  registerEdgarTools(server, client);          // 10 EDGAR filing content tools (search, document, exhibits, text search, performance)
+  registerEdgarTools(server, client);          // 10 EDGAR archive tools (screen, performance, search, documents, structured, document, exhibits, exhibit, text search, accession)
   registerIntelligenceTools(server, client);  // 15 intelligence tools (Phase 1 + 3 + 4 cross-company)
   registerComplianceTools(server, client);    // get_compliance, get_deficiencies, get_compliance_alerts, get_listing_classification
   registerScreenerTools(server, client);      // screen_companies, get_premarket_scan_history (feature-2300)

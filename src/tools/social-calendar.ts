@@ -54,6 +54,13 @@ export function registerSocialCalendarTools(
         'ticker, company name, the exact vendor integers (splitFrom/splitTo), a ' +
         'pre-rendered ratio ("1-for-20"), the effective date, market cap, float in ' +
         'SHARES, and price. ' +
+        '🔴 floatShares: null MEANS NOT MEASURED OR WITHHELD — never zero, never "no ' +
+        'float". Such rows ARE included (they have a valid market cap); ' +
+        'floatWithheldReason says why. Do not substitute a float from another source. ' +
+        'floatUnknownCount counts those null-float rows IN the list; it is not a ' +
+        'withholding count (withheldCount is). price is on the SAME split basis as ' +
+        'the market cap (null when it cannot be stated on one basis), so never pair ' +
+        'it with a pre-split price from elsewhere. ' +
         'WHAT THIS IS: rows are splits scheduled AS OF NOW — not a guarantee that every ' +
         'split effective in the window is already known. The underlying stock_splits ' +
         'table has NO created_at column, so there is no way to measure when a row first ' +

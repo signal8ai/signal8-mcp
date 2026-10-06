@@ -3,7 +3,8 @@
  *
  * Tools for accessing open insider positions derived from Form 4 filings:
  * - get_insider_positions: Per-insider open positions + weighted-avg cost (by CIK)
- * - get_insider_positions_by_ticker: Per-insider lifetime aggregates for a ticker
+ * - get_insider_positions_by_ticker: Per-insider aggregates for a ticker over the
+ *   Form 4 history Signal8 holds (since `coverageStart`) — NOT lifetime
  */
 
 import { z } from 'zod/v3';
@@ -55,8 +56,15 @@ export function registerInsiderPositionsTools(
     {
       title: 'Get Insider Positions by Ticker',
       description:
-        'Get per-insider lifetime position aggregates for a given ticker — which insiders hold ' +
-        'positions in the stock and their aggregate cost/value. Derived from Form 4 filings.',
+        'Get per-insider position aggregates for a given ticker — which insiders hold ' +
+        'positions in the stock and their aggregate cost/value. Derived from Form 4 filings. ' +
+        'NOT LIFETIME: every figure covers only the Form 4 history Signal8 holds, which starts at ' +
+        'the response\'s `coverageStart` date (also repeated on each row) — say "since <coverageStart>", ' +
+        'never "lifetime" or "all-time". Each row carries `costBasisStatus`: `complete` (every share ' +
+        'the history knows was bought inside coverage), `partial` (the holding predates coverage, so ' +
+        '`weightedAvgCost` averages only in-coverage priced buys and is NOT the cost of the position), ' +
+        'or `unknown` (the first in-coverage event was a sale, or there was no priced buy — ' +
+        '`weightedAvgCost`/`costBasisTotal` are null, which means NOT MEASURED, never zero cost).',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),

@@ -1,7 +1,7 @@
 /**
  * MCP Server Integration Tests
  *
- * Verifies that all 101 tools, 3 prompts, and 2 resources are registered
+ * Verifies that all 104 tools, 3 prompts, and 2 resources are registered
  * correctly with proper metadata, annotations, and handler behavior.
  */
 
@@ -19,7 +19,7 @@ import { CapturingServer, createMockClient, type CapturedTool } from './helpers.
 
 /* ── Expected registrations ───────────────────────────────────────── */
 
-// Authoritative set of tools registered at runtime (101). Derived by running
+// Authoritative set of tools registered at runtime (104). Derived by running
 // registerAllTools() and confirmed byte-for-byte against the live
 // mcp.signal8.ai tools/list. Keep sorted; the count + "no unexpected tools"
 // assertions below guard drift.
@@ -51,7 +51,9 @@ const EXPECTED_TOOLS = [
   'get_exhibit_content',
   'get_filing_calendar',
   'get_filing_document',
+  'get_filing_documents',
   'get_filing_exhibits',
+  'get_filing_structured',
   'get_financials',
   'get_float',
   'get_float_history',
@@ -76,8 +78,8 @@ const EXPECTED_TOOLS = [
   'get_legislative_calendar',
   'get_market_breadth',
   'get_market_metrics',
-  'get_news',
   'get_market_news',
+  'get_news',
   'get_ownership',
   'get_policy_events',
   'get_policy_trade_leaderboard',
@@ -86,6 +88,7 @@ const EXPECTED_TOOLS = [
   'get_politician_activity',
   'get_politician_committees',
   'get_politician_detail',
+  'get_politician_disclosures',
   'get_politician_donor_summary',
   'get_politician_donors',
   'get_politician_late_filers',
@@ -161,8 +164,8 @@ beforeAll(() => {
 /* ── Tool registration ────────────────────────────────────────────── */
 
 describe('tool registration', () => {
-  it('registers exactly 101 tools', () => {
-    expect(server.tools).toHaveLength(101);
+  it('registers exactly 104 tools', () => {
+    expect(server.tools).toHaveLength(104);
   });
 
   it.each(EXPECTED_TOOLS)('registers tool: %s', (name) => {

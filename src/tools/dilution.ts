@@ -182,6 +182,9 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         'DOES NOT INCLUDE INSTRUMENT ROWS — call get_dilution_instruments per family for ' +
         'those, and call get_dilution_coverage first to avoid paying 25 credits for an ' +
         'uncovered ticker. ' +
+        '🔴 FLOAT: a declined float block (`available: false`) carries the read tier\'s `reason` and, when the ' +
+        'extraction recorded a veto, a `refusal` object whose `withheldReason` is the exact value get_float ' +
+        'serves — read that, not the bare reason, when reconciling the two. ' +
         '🔴 FLOAT: when `floatWithheldReason` is non-null the tradeable float was NOT ' +
         'MEASURED and must not be stated as a number. `tradeableFloatCeiling` is an UPPER ' +
         'BOUND ("at most X"), NOT a float — never feed it to a market capitalisation, a ' +
@@ -220,6 +223,13 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         'LOWER BOUND, not a complete figure. Say so — presenting a holed total as complete ' +
         'understates a named issuer\'s dilution. An empty rows array on a covered company ' +
         'is a measured "none found in the filings read"; an unavailable response is not. ' +
+        '🔴 ON `shelfs` ROWS `babyShelfCurrentCapacityDollars` IS A STORED, DATED FIGURE, NOT ' +
+        'TODAY\'S HEADROOM: it was struck at extraction time from a float value that may be the ' +
+        'issuer\'s own cover recital months old, less a takedown pool anchored to the corpus ' +
+        'window. Always report it WITH its `babyShelfCapacityAsOf` date (`babyShelfCapacityBasis` ' +
+        'says which float it rests on); a null date means undated, never current. For the ' +
+        'raisable-now figure recomputed from the live float and 60-day-high price call ' +
+        '`get_baby_shelf_capacity` — never present the stored figure as current. ' +
         `${ALWAYS_200} ` +
         `${NOT_MEASURED} ` +
         `${AS_OF} ` +
@@ -253,9 +263,16 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         'the cap, takedowns counted and the remaining raisable amount. ' +
         '🔴 `constraintApplies: false` means the cap does NOT bind (float at or above $75M, ' +
         'so primary offerings are unlimited under I.B.1) — it is NOT "no capacity" and NOT a ' +
-        'favourable finding. 🔴 A `suppressed` response means the figure is WITHHELD (for ' +
+        'favourable finding. 🔴 `constraintApplies: null` means the float value was NOT ' +
+        'MEASURED (`suppressedReason: "float_unmeasured"`): neither the $75M test nor the cap ' +
+        'could be answered — report it as not measured, NEVER as "the cap does not bind" and ' +
+        'NEVER as unlimited. 🔴 A `suppressed` response means the figure is WITHHELD (for ' +
         'example an issuer that has been delisted to OTC and cannot run an S-3 primary at ' +
         'all) — report it as not stateable, NEVER as $0 raisable, which is a claim. ' +
+        '🔴 `suppressedReason: "ib6_pool_unattributed"` means the cap DOES apply but the ' +
+        'trailing sales that would exhaust it could not all be attributed to an I.B.6 ' +
+        'registration, so the derived $0 is a lower BOUND, not a measurement — ' +
+        '`remainingCapacity` is null and `capacityUpperBoundDollars` is "at most", never a figure. ' +
         'A null remaining capacity is likewise not measured, not zero. ' +
         `${ALWAYS_200} ` +
         `${NOT_MEASURED} ` +

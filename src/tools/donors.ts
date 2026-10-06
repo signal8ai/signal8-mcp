@@ -156,7 +156,10 @@ export function registerDonorTools(server: McpServer, client: Signal8ApiClient):
         "stock in the same cycle. Returns each overlap row with the donor, the politician's " +
         'trades, and a confidence label. Use this for queries like "did Pelosi trade stocks of ' +
         'her donors?" or "show me conflicts of interest between donors and trades for ' +
-        '<politician>". Executive-branch slugs return an empty list.',
+        '<politician>". Executive-branch (exec-) slugs are supported: an official with no FEC ' +
+        "candidate record is matched on the FEC contributions linked to the official's slug " +
+        '(reverse lookup), so results there are often sparse. An empty list means no overlap ' +
+        'was found, not that the politician is unsupported.',
       inputSchema: z.object({
         slug: z.string().describe('Politician URL slug (e.g., "sen-nancy-pelosi")'),
         cycle: CYCLE_PATTERN.optional().describe(
