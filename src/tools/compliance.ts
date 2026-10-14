@@ -29,7 +29,7 @@ export function registerComplianceTools(server: McpServer, client: Signal8ApiCli
         'Get full compliance rules evaluation for a company. Runs Nasdaq/NYSE deficiency detection, ' +
         'bid price tracking, and delinquent filing detection. Returns a comprehensive compliance ' +
         'picture combining SEC filing data, market data, and exchange rules. This is the most ' +
-        'thorough compliance check available (25 credits).',
+        'thorough compliance check available.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
       }),
@@ -70,7 +70,7 @@ export function registerComplianceTools(server: McpServer, client: Signal8ApiCli
       description:
         'Get active compliance alerts (violations) for a company. Returns violations detected by ' +
         'the compliance monitoring service, ordered by severity (urgent first) then detection date. ' +
-        'Lighter-weight than the full compliance evaluation (5 credits vs 25). ' +
+        'Lighter-weight than the full compliance evaluation. ' +
         'Optionally filter by severity level and paginate results.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),

@@ -23,7 +23,9 @@ const SERVER_INSTRUCTIONS = `Signal8 provides read-only SEC-filing intelligence 
 Typical workflow:
 - Resolve a company first with \`search_companies\` (name or ticker), then call company tools — \`get_company_profile\`, \`get_quote\`, \`get_financials\`, \`get_short_interest\`, \`get_float\`, \`get_earnings\`, insider trades (\`get_insiders\`), and institutional/total ownership (\`get_institutions\`, \`get_ownership\`). Most tools take a bare ticker (e.g. "AAPL").
 - For SEC filing text/exhibits, use the EDGAR tools (\`search_sec_filings\`, \`get_filing_document\`).
+- For small-cap dilution (warrants, convertibles, preferred, shelf registrations, ATMs, equity lines, baby-shelf capacity, cash runway) call \`get_dilution_coverage\` first, then \`get_dilution_risk\`, \`get_dilution_snapshot\` and \`get_dilution_instruments\` (one family per call); \`get_baby_shelf_capacity\`, \`get_dilution_performance\` and \`get_dilution_history\` cover the rest. Every figure is cited to its SEC filing. A null, withheld or unavailable figure means NOT MEASURED, never "no dilution". The \`explain_dilution\` prompt runs the whole workflow.
 - For political trading use the politician tools (\`get_politicians\`, \`get_politician_transactions\`, \`get_senate_trades_by_ticker\`); for campaign finance use the donor tools.
+- To explain a concept (dilution instruments, SEC forms, halts, float, reverse splits) or define jargon, use the free Signal8 Academy tools (\`search_learn_guides\`, \`get_learn_guide\`, \`define_term\`) and cite the guide URL. They work without an API key.
 
 Prefer lightweight lookups (\`get_company_profile\`, \`get_quote\`) before the heavier \`get_company_bundle\`. Calls are metered by the caller's API-key tier, so batch intent into the most specific tool rather than many broad calls.`;
 
@@ -46,14 +48,14 @@ export function createMcpServer(client: Signal8ApiClient): McpServer {
     { instructions: SERVER_INSTRUCTIONS },
   );
 
-  // Register all live Signal8 tools (86 enabled at runtime).
+  // Register all live Signal8 tools (107 enabled at runtime).
   // See tools/index.ts for the per-domain breakdown and the disabled set.
   registerAllTools(server, client);
 
-  // Register resources: company-profile (dynamic), extraction-types (static)
+  // Register resources: company-profile (dynamic), extraction-types (static), learn-index (static), learn-guide + learn-glossary-term (dynamic, Academy)
   registerAllResources(server, client);
 
-  // Register prompts: analyze_dilution_risk, company_due_diligence, screening_workflow, institutional_analysis
+  // Register prompts: company_due_diligence, screening_workflow, institutional_analysis, explain_dilution
   registerAllPrompts(server, client);
 
   return server;

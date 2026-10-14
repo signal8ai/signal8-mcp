@@ -118,7 +118,10 @@ export function registerPremarketTools(server: McpServer, client: Signal8ApiClie
         '"ceiling" <= | "floor" >=, basis}, the snapshot\'s own labelled figure: present it as the number with its ' +
         'marker, never as a point, never in arithmetic; neither present = not measured, never 0. The low-float ' +
         'board admits on that figure\'s VALUE: a <= 8M ceiling is in, a >= 26M floor or a ~27M estimate is out), short ' +
-        'interest, dilution, and news/catalyst flags. Off-hours it falls back to the last ' +
+        'interest, dilution, and news/catalyst flags. Listing-compliance data (row "compliance", the ' +
+        'compliance/split badges, "reverseSplitSignal", "deficiencySignal") is Signal8 Pro: for any other caller ' +
+        '"compliance" is null with "complianceWithheld": "pro_required" — WITHHELD, which is not "not measured" and ' +
+        'never "no deficiency". Off-hours it falls back to the last ' +
         'session. Use for premarket small-cap runner discovery. Set includePennyStocks=true ' +
         'to include sub-$1 names (separate cache slot). ' +
         'During the 04:00–09:30 ET premarket window rows also carry two LIVE volume ' +

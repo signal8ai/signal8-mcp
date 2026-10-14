@@ -15,6 +15,7 @@
  * - get_politician_votes: Voting records for a politician
  * - get_politician_pnl: Estimated realized + unrealized P&L for a politician (by slug)
  * - get_politicians_pnl_leaderboard: Rank politicians by estimated trading P&L (discovery)
+ * - get_politician_scorecard: Top/bottom 5 by estimated 90-day P&L + SPY benchmark + card PNG URL (discovery)
  * - get_politician_roles: Committee leadership roles for a politician (by slug)
  * - get_recent_congressional_votes: Recent roll-call votes across all members (discovery, GovTrack)
  * - get_recently_sponsored_bills: Most recently introduced bills across all sponsors (discovery)
@@ -242,9 +243,15 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
         'minAmount and kinds); keep nextCursor even when items is empty, and call again at once when ' +
         'hasMore is true. Without `since` only disclosures that became complete in the last 48h are ' +
         'returned. A report is emitted only after no new row of it has arrived for a settle window ' +
-        '(~8h), so items lag the filing by hours. Render amountRange (the filed bracket); amountMin ' +
-        'null means the bracket was not parsed (never $0), amountMax null means "Over $50,000,000" or ' +
-        'unparsed, ticker null means a non-equity asset.',
+        '(~8h), so items lag the filing by hours; a report that GROWS materially afterwards (+25 trades ' +
+        'or +20%) is emitted once more with a higher `revision`, and `replacesPrevious: true` when you ' +
+        'already had it — replace it by `id`. filingDelayDays (longest lag), isLateFiling (>45 days) ' +
+        'and lateTradeCount EXCLUDE trades with transactionDateSuspect=true: a date lagging its own ' +
+        'otherwise on-time report by ~one year is a probable mistyped year upstream, listed as filed ' +
+        'and counted in suspectDateCount — never quote it as a filing lag. owner null means the filing ' +
+        'did not state one ("Not stated"), NEVER "Self". Render amountRange (the filed bracket); ' +
+        'amountMin null means the bracket was not parsed (never $0), amountMax null means "Over ' +
+        '$50,000,000" or unparsed, ticker null means a non-equity asset.',
       inputSchema: z.object({
         since: z.string().optional().describe(
           'Opaque cursor: the nextCursor from a previous call, verbatim. Omit only on the first call.',
@@ -286,7 +293,10 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
       description:
         'Get STOCK Act late filing violations -- trades where the disclosure was filed more than ' +
         '45 days after the transaction (a legal violation). Sorted by filing delay descending. ' +
-        'Useful for identifying politicians with poor disclosure compliance.',
+        'Excludes trades whose transaction date is suspect (a probable mistyped year upstream: ' +
+        '~one year off the rest of its own on-time filing) -- their delay is not measured. owner ' +
+        'null means not stated, never "Self". Useful for identifying politicians with poor ' +
+        'disclosure compliance.',
       inputSchema: z.object({
         days: z.number().min(1).max(730).optional().describe(
           'Lookback period in days (default: 180, max: 730)',
@@ -461,6 +471,48 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
         client.get('/senate-insiders/discovery/pnl-leaderboard', queryParams),
       );
     },
+  );
+
+  // ── Discovery: Weekly P&L Scorecard ───────────────────────────────
+
+  server.registerTool(
+    'get_politician_scorecard',
+    {
+      title: 'Get Politician P&L Scorecard',
+      description:
+        'Top 5 and bottom 5 politicians (Congress + executive-branch officials) by ESTIMATED ' +
+        'trading P&L over a trailing window (default and only supported window: 90 days), plus ' +
+        "SPY's return over the same window as a benchmark, and imageUrl — a ready-to-attach " +
+        '2160x2700 PNG card of the same ranking (null when unavailable; card.reason says why). ' +
+        'ALL P&L FIGURES ARE ESTIMATES (estimate: true, estimateRange "±25–40%"): disclosed ' +
+        'amount RANGES are converted to shares at the historical close, FIFO-matched, and open ' +
+        'positions marked to the latest quote. State that they are estimates whenever you ' +
+        'publish them; the card already prints "Estimates from disclosed amount ranges ' +
+        '(±25–40%). Not investment advice." ' +
+        'WHAT THE METRIC IS (read `metric`): P&L on trades DISCLOSED INSIDE the window only — ' +
+        'realized on round trips opened and closed in the window plus unrealized on positions ' +
+        'opened in the window. It is NOT lifetime P&L; sales of positions bought before the ' +
+        'window are not counted. Eligibility: at least 5 trades in the window ' +
+        '(eligibility.minTradesInWindow), so a single lucky trade cannot top the board. ' +
+        'Each row: slug, fullTitle ("Senator", "Representative", or an executive official\'s ' +
+        'filed title), fullName, displayName, party and state as full words, estimatedPnl, ' +
+        'winRate (0-1; null = no position closed in the window — not measured, never 0%), ' +
+        'tradesInWindow, unrealizedMeasured, and portraitUrl (always null for executive ' +
+        'officials). Use the full title and full party/state words — never "Sen." or "D-CA". ' +
+        'benchmark.available false means SPY was NOT measured (benchmark.reason) — never 0%. ' +
+        'available false with reason "pending" means the window has not been computed yet, ' +
+        'not that nobody traded.',
+      inputSchema: z.object({
+        window: z.literal(90).optional().describe(
+          'Trailing window in days. Only 90 is supported (default 90).',
+        ),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ window }) =>
+      toolHandler(() =>
+        client.get('/politicians/scorecard', { window: String(window ?? 90) }),
+      ),
   );
 
   // ── Roles (per-slug) ──────────────────────────────────────────────

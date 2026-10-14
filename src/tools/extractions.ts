@@ -80,7 +80,7 @@ export function registerExtractionTools(server: McpServer, client: Signal8ApiCli
       title: 'Get Extraction Dashboard',
       description:
         'Get a dashboard aggregate view for a specific extraction type across all companies. ' +
-        'This is a high-cost endpoint (50 credits) that aggregates data across the entire ' +
+        'This is a heavy endpoint that aggregates data across the entire ' +
         'company universe. Useful for market-wide analysis of specific instrument types. ' +
         'Valid types: warrant-terms, convertible-terms, debt-provisions, shelf-provisions, ' +
         'rofr-provisions, standstill-provisions, counsel-provisions, underwriting-terms, ' +

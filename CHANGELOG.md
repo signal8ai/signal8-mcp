@@ -7,6 +7,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-14
+
+### Added
+
+- **`explain_dilution` prompt** — reads a company's dilution data and explains
+  each figure with the Signal8 Academy guides, citing their URLs.
+- **Dilution in the server instructions.** The `initialize` instructions now name the dilution workflow (call
+  `get_dilution_coverage` first, then `get_dilution_risk`,
+  `get_dilution_snapshot`, `get_dilution_instruments`) and the rule that a
+  null, withheld or unavailable figure means NOT MEASURED, never "no dilution".
+
+### Changed
+
+- **Tool descriptions no longer quote per-call credit costs.** Public plans have
+  no per-call credits; descriptions now give plain size guidance instead.
+- **README:** the Dilution section lists the seven live tools (it still listed
+  retired `get_instruments` / `get_baby_shelf` and called the category
+  disabled), tool count updated, prompts list corrected. Package description
+  names dilution.
+
+### Added
+
+- **Section search and the exhibit-type filter on `search_sec_filings` /
+  `search_filing_text`** (2026-10-09, archive "Wave 3"). Three new optional
+  params on both tools: `section` (comma-separated: `business`, `risk_factors`,
+  `cybersecurity`, `legal_proceedings`, `mdna`, `market_risk`, `controls`, `ex99`
+  for press-release exhibits, `item_X_YY` for an 8-K item; aliases `mda`, `risk`,
+  `legal`, `cyber`, `press_release`, `5.02`) restricts matching to those sections;
+  `exhibitTypes` (e.g. `EX-10` family, `EX-99.1` exact) keeps filings carrying
+  any of them; `matchedSections` (default true) toggles the per-row
+  `matchedSections`. A section is applied only when `meta.sections` says so —
+  otherwise `meta.unsupported` (`{ param, reason }`) explains that the whole
+  filing was searched. An exhibit filter the rows cannot prove is listed in
+  `ignoredFilters` / `meta.unsupported`. With `facets=true`, `facets.sections` /
+  `facets.exhibitTypes` appear when measured. Unknown values are a 400. All
+  additive; until the archive's v2 index is live, sections report
+  `meta.unsupported` and rows carry no `matchedSections`.
+- **`get_politician_scorecard`** (2026-10-09). Top 5 and bottom 5 politicians
+  (Congress + executive-branch officials) by ESTIMATED P&L on trades disclosed in
+  the last 90 days (at least 5 trades in the window), SPY's return over the same
+  window, and `imageUrl` — a 2160x2700 PNG card of the same ranking with the
+  estimate disclaimer printed on it. Calls the new
+  `GET /api/v1/public/politicians/scorecard?window=90` (api_pro); against an older
+  backend it returns 404. Tool count 107 -> 108.
+- **Search syntax, facets and query understanding on `search_sec_filings` /
+  `search_filing_text`** (2026-10-09, archive "Wave 2"). Both descriptions now
+  document the full query syntax — quotes, `OR`, `-exclude`, `w1 NEAR/10 w2`,
+  trailing `word*`, tickers / `$TICKER`, form codes and `item 5.02`.
+  `search_sec_filings` gains `facets` (boolean, default false: adds top-level
+  `facets { forms, years, items }`, each `[{ value, count }]` over the whole
+  result set, present only when measured) and `understand` (boolean, default
+  true; false searches the words literally). The archive's reading of the query
+  is passed through as `meta.understanding` (tickers, companies, forms, items,
+  years, synonym expansions). Rows may carry `items`, `exhibitTypes` and
+  `primaryDocType`; `meta.diversity` reports relevance page 1's per-company cap.
+  `search_filing_text` gains `understand` and `facets` too. All additive; absent
+  against an archive that predates them.
+- **Signal8 Academy tools, resources and prompt.** `search_learn_guides`,
+  `get_learn_guide` and `define_term` (tools), `signal8://learn`,
+  `signal8://learn/guides/{track}/{slug}` and `signal8://learn/glossary/{slug}`
+  (resources), and the `explain_dilution` prompt, which reads the dilution tools
+  through the Academy guides and holds the not-measured rule. Content comes from
+  the new KEYLESS `GET /api/v1/public/learn/*` backend routes, so these work on
+  the stdio server with no `SIGNAL8_API_KEY`. Requires that backend change to be
+  deployed first; against an older backend the three tools return 401/404.
+  Tool count 104 -> 107.
+- **`match` and `sort` on `search_sec_filings` and `search_filing_text`**
+  (2026-10-08). `match: "exact" | "stemmed"` chooses word matching for the
+  full-text query — `exact` matches a word only as itself (EDGAR full-text
+  search's own behaviour: "split" does not match "splits"), `stemmed` also
+  matches English variations. Omitted ⇒ `stemmed`, the previous behaviour.
+  `search_filing_text` also gains `sort` (`newest` | `relevance`). The mode actually applied
+  is reported in the response's `meta.matchMode` (plus
+  `meta.matchModeFallbackReason` when it differs from the request), and
+  `meta.engine` names the search engine; `meta` is absent when not stated.
+
+### Changed
+
+- **`get_dilution_risk` now returns floor levels and partial scores** (backend
+  change, 2026-10-06). Where the API used to withhold `overall`, `overheadSupply`
+  and `score` on any unsized instrument, it now publishes them with the hedge
+  beside each value: `levelsAreLowerBound` / `levelsLowerBoundReason` (always
+  present) and `score` out of `scoreMaxMeasured` with `scoreUnmeasuredComponents`.
+  Below 70 measured points the score is still withheld. The tool description
+  now spells out the floor and the `offeringAbility` semantics (a live facility
+  at a measured $0 drawable reads `medium`).
+
 ## [0.17.0] - 2026-10-04
 
 ### Added

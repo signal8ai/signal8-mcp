@@ -5,6 +5,7 @@
  * - company_due_diligence: Comprehensive company research and due diligence workflow
  * - screening_workflow: Guided stock screening and drill-down analysis
  * - institutional_analysis: Institutional ownership and smart money flow analysis
+ * - explain_dilution: Dilution data (Pro tools) explained through Signal8 Academy guides
  */
 
 import { z } from 'zod/v3';
@@ -21,6 +22,7 @@ import { type Signal8ApiClient } from '../api-client.js';
  * - company_due_diligence: 9-step company due diligence research
  * - screening_workflow: 5-step discover-screen-analyze workflow
  * - institutional_analysis: 6-step institutional ownership deep dive
+ * - explain_dilution: dilution snapshot/risk read through the Academy guides
  *
  * @param server - McpServer instance to register prompts on
  * @param _client - Authenticated API client (reserved for future prompts that may pre-fetch data)
@@ -200,6 +202,61 @@ export function registerAllPrompts(server: McpServer, _client: Signal8ApiClient)
               '- **Smart Money Presence**: Whether any top-AUM institutions hold positions and their sizing',
               '- **Insider Alignment**: Whether insiders are buying alongside institutions (alignment) or selling into institutional buying (divergence)',
               '- **Key Takeaway**: 2-3 sentence summary of what institutional flows tell us about the stock',
+            ].join('\n'),
+          },
+        },
+      ],
+    }),
+  );
+
+  // Prompt: explain_dilution
+  // Pairs the (Signal8 Pro) dilution data tools with the free Academy guides so
+  // the answer explains what each figure MEANS, not just what it is — while
+  // holding the NULL-is-not-measured rule the dilution tool descriptions state.
+  server.registerPrompt(
+    'explain_dilution',
+    {
+      title: 'Explain Dilution',
+      description:
+        'Explain a company\'s dilution picture in plain English: pulls the Signal8 dilution ' +
+        'coverage, risk score and snapshot (Signal8 Pro tools) and explains each instrument and ' +
+        'figure using the free Signal8 Academy guides and glossary, citing their URLs. Holds the ' +
+        'rule that a missing or withheld figure is NOT MEASURED, never "no dilution".',
+      argsSchema: {
+        ticker: z.string().describe('Stock ticker symbol to explain (e.g., MNTS, VNRX)'),
+      },
+    },
+    ({ ticker }) => ({
+      messages: [
+        {
+          role: 'user' as const,
+          content: {
+            type: 'text' as const,
+            text: [
+              `Explain the dilution picture for ${ticker} in plain English, grounding every concept in the Signal8 Academy. Follow these steps:`,
+              '',
+              `1. **Coverage first**: Call get_dilution_coverage for ${ticker}. If it is \`not_covered\`, say Signal8 has NOT ANALYSED this company yet — that is not the same as the company having no dilution — and skip to step 4 to explain the concepts generically. If it is \`stale\`, say the analysis predates recent filings.`,
+              '',
+              `2. **Data**: Call get_dilution_risk and get_dilution_snapshot for ${ticker}. Call get_dilution_instruments only for the families the snapshot shows are present (e.g. warrants, convertibles, atms, shelfs). Read every \`available\`, \`reason\`, \`withheld*\` and \`meta.asOfDate\` field before any number.`,
+              '',
+              '3. **Rules for reporting the numbers (non-negotiable)**:',
+              '   - NULL, absent or withheld means NOT MEASURED. Never write "no warrants", "no shelf", "no dilution" or zero from a missing value. A numeric 0 is a measured zero only when its availability field says so.',
+              '   - Report the risk score as `score`/`scoreMaxMeasured` and name the components in `scoreUnmeasuredComponents`. Never rescale it to /100. A non-null `scoreWithheldReason` means there is NO score, not a score of zero.',
+              '   - When `levelsAreLowerBound` is true, say AT LEAST only for the levels named in `levelsLowerBoundScope`, and give `levelsLowerBoundReason` as the cause.',
+              '   - If the float is withheld (`floatWithheldReason`), say it was not measured; never substitute another float. A `tradeableFloatCeiling` is an upper bound ("at most").',
+              '   - If `goingConcern` is true, report it alongside any runway figure, never the runway alone.',
+              '   - Instrument totals with withheld rows are LOWER BOUNDS — say so.',
+              '   - State the as-of date. Describe history as history; make no price predictions and give no buy/sell advice.',
+              '',
+              '4. **Explain with the Academy**: For each instrument or figure you report, find the matching guide with search_learn_guides (e.g. "warrant overhang", "ATM", "baby shelf", "toxic convertible", "cash runway", "float") and read it with get_learn_guide. Good starting points: dilution/what-is-dilution, signal8/dilution-pressure-score, dilution/warrant-overhang, dilution/atm-offerings, dilution/s1-vs-s3-baby-shelf, dilution/toxic-convertibles, dilution/cash-runway, dilution/float-vs-shares-outstanding. Use define_term for any jargon (e.g. "ratchet", "pre-funded warrant", "baby shelf") and quote its short definition.',
+              '',
+              'Then write the explanation:',
+              `- **Summary**: 2-3 sentences on what the data says about ${ticker}, with the as-of date and every not-measured caveat that applies.`,
+              '- **What could add shares**: each instrument family present, its size as reported (lower bound where rows were withheld), and one plain sentence on how that instrument works, citing the Academy guide URL.',
+              '- **Risk score, read correctly**: score out of scoreMaxMeasured, the excluded components, and what the score measures (cite the dilution-pressure-score guide).',
+              '- **Cash and runway**: as reported, with going-concern status if flagged.',
+              '- **Not measured**: an explicit list of every figure that was null, withheld or unavailable.',
+              '- **Learn more**: the Academy guide and glossary URLs you used.',
             ].join('\n'),
           },
         },

@@ -47,7 +47,7 @@ async function main(): Promise<void> {
   if (!apiKey) {
     process.stderr.write(
       'Signal8 MCP: SIGNAL8_API_KEY is not set — starting in discovery-only mode ' +
-        '(tool calls require a key). Get one at https://signal8.ai/settings/api-keys\n',
+        '(tool calls require a key). Get one (Signal8 Pro) at https://signal8.ai/developer/api-keys\n',
     );
   }
 

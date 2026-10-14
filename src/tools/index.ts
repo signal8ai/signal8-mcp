@@ -2,18 +2,19 @@
  * Signal8 MCP Tools Registry
  *
  * Registers the live Signal8 MCP tools on the server, organized by domain.
- * 104 tools are exposed at runtime. The imported register* functions contain
- * 111 active server.registerTool() calls (further calls in these files are
+ * 108 tools are exposed at runtime. The imported register* functions contain
+ * 115 active server.registerTool() calls (further calls in these files are
  * block-commented out behind rights/data gates and are NOT counted); of those
- * 111, 7 are suppressed by the DISABLED_TOOLS set in registerAllTools(), leaving
- * 104. (The extractions/macro files are not imported at all.)
+ * 115, 7 are suppressed by the DISABLED_TOOLS set in registerAllTools(), leaving
+ * 108. (The extractions/macro files are not imported at all.)
  *
  * ⚠️ This count is hand-maintained and HAD DRIFTED — it read "90 exposed / 97
  * active" while the measured values were 92 / 99 (corrected 2026-09-07, when the
  * 7 dilution tools took it to 99 / 106; re-measured 2026-09-14 at 101 / 108 when
  * the 2 social-calendar tools landed; 102 / 109 with get_politician_disclosures, which
  * did not update this line; 104 / 111 on 2026-10-04 with get_filing_documents and
- * get_filing_structured). Derive it rather than trusting the prose:
+ * get_filing_structured; 107 / 114 on 2026-10-08 with the 3 Academy tools; 108 / 115
+ * on 2026-10-09 with get_politician_scorecard). Derive it rather than trusting the prose:
  * strip block comments from each imported tools file, count `server.registerTool(`
  * occurrences, and subtract the DISABLED_TOOLS entries.
  *
@@ -28,7 +29,7 @@
  * - Trading Halts (feature-2260): get_trading_halts (active NASDAQ/NYSE/AMEX halts)
  * - Calendar: get_earnings_calendar, get_economic_calendar, get_filing_calendar,
  *     get_lockup_expirations, get_post_earnings_movers, get_recent_material_filings
- * - EDGAR Content (Signal8's SEC archive, 2021-10 → today): screen_sec_filings,
+ * - EDGAR Content (Signal8's SEC archive, `archiveFrom` → today): screen_sec_filings,
  *     screen_sec_filings_performance, search_sec_filings (incl. company filters),
  *     get_filing_documents, get_filing_structured, get_filing_document, get_filing_exhibits,
  *     get_exhibit_content, search_filing_text, lookup_accession_number
@@ -67,6 +68,8 @@
  *     get_policy_trade_leaderboard
  * - Premarket/RVOL (feature-2300): get_rvol_history, get_premarket_scanner
  * - Social Calendar: get_upcoming_reverse_splits, get_recent_uplistings
+ * - Academy (signal8.ai/learn, KEYLESS — the only tools that work without an API
+ *     key): search_learn_guides, get_learn_guide, define_term
  */
 
 import { z } from 'zod/v3';
@@ -96,10 +99,11 @@ import { registerPolicyTools } from './policy.js';
 import { registerFloorIntelligenceTools } from './floor-intelligence.js';
 import { registerPremarketTools } from './premarket.js';
 import { registerSocialCalendarTools } from './social-calendar.js';
+import { registerLearnTools } from './learn.js';
 
 /**
- * Register the live Signal8 MCP tools on the server (104 exposed at runtime:
- * 111 active server.registerTool() calls in the imported files minus the
+ * Register the live Signal8 MCP tools on the server (107 exposed at runtime:
+ * 114 active server.registerTool() calls in the imported files minus the
  * 7-entry DISABLED_TOOLS set below).
  *
  * Each tool wraps a `/api/v1/` endpoint with:
@@ -179,7 +183,7 @@ export function registerAllTools(server: McpServer, client: Signal8ApiClient): v
   registerScreenerTools(server, client);      // screen_companies, get_premarket_scan_history (feature-2300)
   registerEventsAndAtmTools(server, client);  // get_events, get_atm_activity, get_split_history
   registerEtfTools(server, client);           // get_etf_bundle
-  registerPoliticianTools(server, client);   // 19 politician trading tools (STOCK Act + committees + bills + votes + P&L + discovery)
+  registerPoliticianTools(server, client);   // 20 politician trading tools (STOCK Act + committees + bills + votes + P&L + discovery)
   registerCashPositionTools(server, client); // 6 cash position & runway tools
   registerDilutionTools(server, client);     // 7 dilution tools (Signal8 Pro tier): coverage, risk, snapshot, instruments, ib6, performance, history
   registerIntradayTools(server, client);    // 3 intraday analysis tools (bars, volume profile, accumulation)
@@ -193,4 +197,5 @@ export function registerAllTools(server: McpServer, client: Signal8ApiClient): v
   registerFloorIntelligenceTools(server, client); // 3 floor-intelligence tools: legislative catalyst calendar + bill impact + per-politician upcoming bills
   registerPremarketTools(server, client);        // 2 premarket/RVOL tools (feature-2300): get_rvol_history, get_premarket_scanner
   registerSocialCalendarTools(server, client);   // 2 social-calendar tools: get_upcoming_reverse_splits, get_recent_uplistings
+  registerLearnTools(server, client);            // 3 Academy tools (keyless): search_learn_guides, get_learn_guide, define_term
 }

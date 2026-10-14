@@ -152,3 +152,37 @@ describe('get_political_sector_rotation (task-2136)', () => {
     );
   });
 });
+
+describe('get_politician_scorecard (@CongressScanner weekly card)', () => {
+  let server: CapturingServer;
+  let client: MockClient;
+  let tool: CapturedTool;
+
+  beforeEach(() => {
+    server = new CapturingServer();
+    client = makeMockClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registerPoliticianTools(server as any, client as unknown as Signal8ApiClient);
+    tool = server.tools.find((t) => t.name === 'get_politician_scorecard')!;
+  });
+
+  it('is registered read-only with a description that says the figures are estimates', () => {
+    expect(tool).toBeDefined();
+    expect(tool.config.annotations?.readOnlyHint).toBe(true);
+    const d = String(tool.config.description);
+    expect(d).toMatch(/ESTIMATES/);
+    expect(d).toContain('±25–40%');
+    expect(d).toContain('NOT lifetime P&L');
+    expect(d).toContain('imageUrl');
+  });
+
+  it('GETs /politicians/scorecard with window=90 by default', async () => {
+    await tool.handler({});
+    expect(client.get).toHaveBeenCalledWith('/politicians/scorecard', { window: '90' });
+  });
+
+  it('forwards an explicit window', async () => {
+    await tool.handler({ window: 90 });
+    expect(client.get).toHaveBeenCalledWith('/politicians/scorecard', { window: '90' });
+  });
+});

@@ -1,7 +1,7 @@
 /**
  * MCP Server Integration Tests
  *
- * Verifies that all 104 tools, 3 prompts, and 2 resources are registered
+ * Verifies that all 108 tools, 4 prompts, and 5 resources are registered
  * correctly with proper metadata, annotations, and handler behavior.
  */
 
@@ -19,11 +19,12 @@ import { CapturingServer, createMockClient, type CapturedTool } from './helpers.
 
 /* ── Expected registrations ───────────────────────────────────────── */
 
-// Authoritative set of tools registered at runtime (104). Derived by running
+// Authoritative set of tools registered at runtime (108). Derived by running
 // registerAllTools() and confirmed byte-for-byte against the live
 // mcp.signal8.ai tools/list. Keep sorted; the count + "no unexpected tools"
 // assertions below guard drift.
 const EXPECTED_TOOLS = [
+  'define_term',
   'get_accumulation_snapshot',
   'get_analyst_consensus',
   'get_analyst_coverage',
@@ -75,6 +76,7 @@ const EXPECTED_TOOLS = [
   'get_institutions',
   'get_institutions_leaderboards',
   'get_intraday_bars',
+  'get_learn_guide',
   'get_legislative_calendar',
   'get_market_breadth',
   'get_market_metrics',
@@ -95,6 +97,7 @@ const EXPECTED_TOOLS = [
   'get_politician_pnl',
   'get_politician_recent_trades',
   'get_politician_roles',
+  'get_politician_scorecard',
   'get_politician_transactions',
   'get_politician_votes',
   'get_politicians',
@@ -127,6 +130,7 @@ const EXPECTED_TOOLS = [
   'search_companies',
   'search_filing_text',
   'search_institutions',
+  'search_learn_guides',
   'search_sec_filings',
 ] as const;
 
@@ -134,11 +138,15 @@ const EXPECTED_PROMPTS = [
   'company_due_diligence',
   'screening_workflow',
   'institutional_analysis',
+  'explain_dilution',
 ] as const;
 
 const EXPECTED_RESOURCES = [
   'company-profile',
   'extraction-types',
+  'learn-index',
+  'learn-guide',
+  'learn-glossary-term',
 ] as const;
 
 /* ── Test setup ───────────────────────────────────────────────────── */
@@ -164,8 +172,8 @@ beforeAll(() => {
 /* ── Tool registration ────────────────────────────────────────────── */
 
 describe('tool registration', () => {
-  it('registers exactly 104 tools', () => {
-    expect(server.tools).toHaveLength(104);
+  it('registers exactly 108 tools', () => {
+    expect(server.tools).toHaveLength(108);
   });
 
   it.each(EXPECTED_TOOLS)('registers tool: %s', (name) => {
@@ -321,8 +329,8 @@ describe('schema richness', () => {
 /* ── Prompt registration ──────────────────────────────────────────── */
 
 describe('prompt registration', () => {
-  it('registers exactly 3 prompts', () => {
-    expect(server.prompts).toHaveLength(3);
+  it('registers exactly 4 prompts', () => {
+    expect(server.prompts).toHaveLength(4);
   });
 
   it.each(EXPECTED_PROMPTS)('registers prompt: %s', (name) => {
@@ -351,8 +359,8 @@ describe('prompt registration', () => {
 /* ── Resource registration ────────────────────────────────────────── */
 
 describe('resource registration', () => {
-  it('registers exactly 2 resources', () => {
-    expect(server.resources).toHaveLength(2);
+  it('registers exactly 5 resources', () => {
+    expect(server.resources).toHaveLength(5);
   });
 
   it.each(EXPECTED_RESOURCES)('registers resource: %s', (name) => {

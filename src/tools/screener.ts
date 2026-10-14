@@ -58,8 +58,10 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
         'computed_float sort compare the figure\'s VALUE (COALESCE of the two), so a bounded row is kept; a row with ' +
         'neither is NOT MEASURED, never 0. 🔴 Never feed floatEstimate into a market cap, a percent-of-float or a ' +
         'short-interest ratio — a bound is not a point. ' +
-        'Screen companies by price range, volume, cash runway, float, shares outstanding, ' +
-        'market cap, industry, listing exchange (NASDAQ/NYSE/AMEX), and float data source. ' +
+        'Screen companies by price range, volume, cash runway, float, shares outstanding (each row\'s `shares_outstanding` is DATED by `sharesOutstandingAsOf` + `sharesOutstandingAsOfKind` (stated / checked / none = date not recorded) and a vendor-free `sharesOutstandingSource`; never present the count without its date), ' +
+        'market cap, industry, listing exchange (NASDAQ/NYSE/AMEX), float data source and TTM dividend yield. ' +
+        'Each row carries dividendYield (trailing-twelve-month cash dividends with an ex-date in the last 365 days ' +
+        '/ current price, in percent), nextExDate and lastExDate — null means NOT MEASURED or not a payer, never 0%. ' +
         'Sort results by any sortable column. ' +
         'Returns matching companies with key metrics and pagination. Each row carries live ' +
         'trading-halt status (halted/haltCode/haltedAt; false/null when trading normally); ' +
@@ -129,11 +131,20 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
           'Filter by float data source',
         ),
 
+        // Dividend yield filter (percent)
+        minDividendYield: z.number().min(0).optional().describe(
+          'Minimum TTM dividend yield in percent (e.g. 3 for 3%). Rows with no measured yield never match.',
+        ),
+        maxDividendYield: z.number().min(0).optional().describe(
+          'Maximum TTM dividend yield in percent. Rows with no measured yield never match.',
+        ),
+
         // Sorting
         sortBy: z.enum([
           'ticker', 'price', 'change_percent', 'volume', 'industry',
           'cash_runway_months', 'shares_outstanding',
           'computed_float', 'market_cap_computed', 'updated_at',
+          'dividend_yield',
         ]).optional().describe(
           'Column to sort results by (default: volume)',
         ),

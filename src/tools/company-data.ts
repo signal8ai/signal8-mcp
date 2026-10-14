@@ -34,7 +34,9 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'quote instead of an error, or currentPrice:null + halted:true when nothing ' +
         'is recoverable. marketCap is the live price × the SEC-derived share count; ' +
         'when that count is unavailable it is null with marketCapWithheldReason set — ' +
-        'NOT MEASURED, never "no market cap" and never $0.',
+        'NOT MEASURED, never "no market cap" and never $0. The count itself rides as `sharesOutstanding` with ' +
+        '`sharesOutstandingAsOf` + `sharesOutstandingAsOfKind` ("stated" = the issuer\'s statement date; "checked" = when it was last ' +
+        'confirmed against a vendor; "none" = date not recorded) and a vendor-free `sharesOutstandingSource` — quote the date with the count.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),
@@ -97,7 +99,9 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
       description:
         'Get float data for a company: floatShares, floatDefinition, as-of date, and — when the ' +
         'headline float is WITHHELD — the bounds and labelled stand-ins that replace it. Use when ' +
-        'analyzing share supply. ' +
+        'analyzing share supply. The share count the float was judged against (`basisSharesOutstanding`) is DATED: ' +
+        '`sharesOutstandingAsOf` + `sharesOutstandingAsOfKind` ("stated" / "checked" / "none" = date not recorded) and a vendor-free ' +
+        '`sharesOutstandingSource`; never present the count without its date. ' +
         'CARDINAL RULE: null / absent / withheld means NOT MEASURED — never "no float", never "no ' +
         'restricted shares", never zero. A numeric 0 is a MEASURED zero and passes a null check, so ' +
         'decide from the reason/marker field ("floatWithheldReason", "restrictedBlockCount", ' +
@@ -133,10 +137,26 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'range) at or above 99% of the share count says only "the float is at most every issued share" and is ' +
         'STRIPPED from the response (null), so the lower tier may headline under its own "source" with ' +
         '"snapshotFloatWithheldReason" as context (GELS: Polygon 5.12M, not "<= 11.18M" on 11.18M shares). ' +
-        'Floors and point estimates are never stripped. ' +
+        'Floors and point estimates are never stripped. EXCEPT (2026-10-08): a "floatEstimate" with rung ' +
+        '"affiliate_sizing_estimate" carries a "reason" built from the filings\' itemised insiders (e.g. "no reported ' +
+        'insider holdings (4 affiliates at zero); 1 unreported: <name> (CFO, since <date>)") and "unsizedAffiliates" ' +
+        '[{holder, role, since}]; it is KEPT even at the share count because the reason is a finding — quote the reason ' +
+        'with the figure, and never present it as floatShares. A "shares_outstanding_ceiling" whose "reason" states a declared ' +
+        'affiliate floor ("the insider holdings the filings size total at least N shares") may likewise be served at the share ' +
+        'count, but ONLY as the last resort when no lower tier answered or its answer was refused (2026-10-11). ' +
+        '🔴 SUPERSEDED LATER ON 2026-10-11: EVERY "shares_outstanding_ceiling" now carries a "reason" (the declared floor, ' +
+        'or "the filings do not size the insider holdings, so none are deducted") and HEADLINES even at the share count — ' +
+        'a vendor figure then rides "otherSourceFloat" only. A "floatEstimate" may also carry "qualifier" (a short label — ' +
+        'quote it with the figure, e.g. "insider holdings not sized") and "offBasis" (an array): "pre_split_as_filed" = the ' +
+        'figure is AS OF "asOf", BEFORE the split(s) in "splitsAfter" [{ratio, effectiveDate, status}], NOT restated across ' +
+        'them; "ordinary_shares_unconverted" = in ORDINARY shares on an ADS whose ratio is unresolved, NOT ADSs; ' +
+        '"count_predates_issuances" = struck from a dated filing-cover count ("countSource") with later issuances not ' +
+        'counted. An "offBasis" figure is true ONLY with its label: never compare it with a price, a market cap, another ' +
+        'float or a threshold, and never state it without the label. ' +
         'Since 2026-10-01 that fall-through is GUARDED: a lower-tier figure dated before a split the snapshot names, or ' +
-        'outside the snapshot\'s own floor / ceiling / point estimate, is REFUSED and the withheld envelope is served with ' +
-        '"fallbackRefusal" {reason: "fallback_predates_split" | "fallback_outside_snapshot_bounds", refusedSource, detail} ' +
+        'outside the snapshot\'s own floor / ceiling / point estimate, or (since 2026-10-08) COUNTED before share issuances ' +
+        'the snapshot records totalling at least 10% of it, is REFUSED and the withheld envelope is served with ' +
+        '"fallbackRefusal" {reason: "fallback_predates_split" | "fallback_predates_issuance" | "fallback_outside_snapshot_bounds", refusedSource, detail} ' +
         'beside the snapshot\'s "floatWithheldReason". The refused figure is NOT in the response and must not be fetched ' +
         'from a vendor to fill the gap — the detail says why no lower tier is shown either. A snapshot that stated a float ' +
         'never carries it. A withheld ' +
@@ -147,14 +167,19 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'render it with "<=" and nothing else (null = no bound stateable, never 0). ' +
         '(2) "affiliateBasis.floatLowerBound" / "floatUpperBound" are a RANGE the float lies in — ' +
         '"between X and Y"; each end is null independently when not measurable, so state the ends ' +
-        'that exist as inequalities. This object also appears on PUBLISHED floats with both ends ' +
-        'equal to floatShares — it is a bound only when floatShares is null. ' +
+        'that exist as inequalities. They bound the NON-AFFILIATE float, which still INCLUDES ' +
+        'restricted shares held by non-affiliates — NOT the tradeable floatShares. This object also ' +
+        'appears on PUBLISHED floats; there it is context, never a bound on floatShares (a ' +
+        '"convention_conservative" tradeable figure can sit BELOW floatLowerBound because it also ' +
+        'deducts the restricted shares the bound includes — that is not a contradiction). ' +
         '(3) "floatEstimate" is a BADGED ESTIMATE {shares, basis, direction, confidence}: "basis" ' +
         'is the itemised working (quote it), "direction" says which way it errs ("overstates" = the ' +
         'true float is at most shares; "understates" = at least; "unknown"), "confidence" ' +
         'describes the estimate, not a float. Since 2026-09-29 it is the SNAPSHOT FLOAT LADDER figure ' +
         'on any withheld snapshot ticker and may also carry "rung" ("non_affiliate_estimate" | ' +
-        '"shares_outstanding_ceiling" | "rolled_forward_lower_bound"), "bound" ("point" = about X, ' +
+        '"shares_outstanding_ceiling" | "rolled_forward_lower_bound" | "recital_rolled_forward_estimate" | "successor_exchange_estimate" | "affiliate_sizing_estimate" | ' +
+        '"restricted_block_ceiling" — at most O/S less affiliates, less the restricted blocks the filings place outside them and the ' +
+        'part of the unplaced blocks too large to fit inside them), "bound" ("point" = about X, ' +
         'render "~X"; "ceiling" = AT MOST X, render "<= X"; "floor" = AT LEAST X, render ">= X") and ' +
         '"asOf"; a floor or ceiling is a BOUND, never a point value. null means no figure could be ' +
         'derived from the snapshot\'s structured fields. An estimate never becomes floatShares — present shares ' +

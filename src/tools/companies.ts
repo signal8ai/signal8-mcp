@@ -60,7 +60,7 @@ export function registerCompanyTools(server: McpServer, client: Signal8ApiClient
       description:
         'Get all available data for a company in a single call. Returns financials, earnings, ' +
         'holdings, ownership, insider trading, analyst data, and more. This is the most comprehensive ' +
-        'but also the most expensive tool (25 credits). Use targeted tools when you only need specific data.',
+        'but also the heaviest tool (largest response). Use targeted tools when you only need specific data.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
         include: z.string().optional().describe(
@@ -86,10 +86,12 @@ export function registerCompanyTools(server: McpServer, client: Signal8ApiClient
       description:
         'Get an enriched company profile by ticker symbol. Returns CIK, exchange, sector, ' +
         'industry, market cap, employee count, description, and other fundamental data. ' +
-        'This is a lightweight lookup (1 credit) -- use this when you only need basic company info ' +
+        'This is a lightweight lookup -- use this when you only need basic company info ' +
         'rather than the full bundle. Always includes halted/haltCode/haltedAt trading-halt ' +
         'status (false/null when trading normally); a halted-but-listed ticker reports ' +
-        'delisted:false.',
+        'delisted:false. `sharesOutstanding` is DATED: `sharesOutstandingAsOf` + `sharesOutstandingAsOfKind` ("stated" = the ' +
+        'issuer\'s statement date; "checked" = when it was last confirmed against a vendor; "none" = date not recorded) and a ' +
+        'vendor-free `sharesOutstandingSource`. Quote the date with the count; null is NOT MEASURED, never zero.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
       }),

@@ -2,7 +2,8 @@
  * EDGAR Filing Content MCP Tools
  *
  * Tools over Signal8's own SEC filing archive (sec-extraction: EDGAR filings
- * from 2021-10 to today, full-text indexed), proxied through the public API
+ * in the archive's held range — `archiveFrom` in each response; currently from
+ * late 2021, expanding back to 2016 — full-text indexed), proxied through the public API
  * at /api/v1/public/edgar/*.
  *
  * - screen_sec_filings: Screen filings by sector, market cap, industry + form type
@@ -22,13 +23,15 @@
 
 /**
  * Shared description of what the archive holds — every EDGAR tool states it,
- * because "no result" from a 5-year archive is not "never filed".
+ * because "no result" from an archive with a floor is not "never filed".
  */
 const ARCHIVE_SCOPE =
-  'Coverage: Signal8\'s archive of SEC EDGAR filings from October 2021 to today (about 3.9M filings), updated ' +
-  'through the day; filings older than 2021-10 may be absent, so an empty result is not proof something was never ' +
-  'filed. Some rows are record-only (bodyStored: false — metadata from the EDGAR index with no document body), so ' +
-  'their text cannot be read here; open them at their sec.gov URL.';
+  'Coverage: Signal8\'s archive of SEC EDGAR filings in the archive\'s held range (see `archiveFrom` in each ' +
+  'response; currently from late 2021, expanding back to 2016 as the history backfill fills in), updated ' +
+  'through the day. The archive only holds filings from its `archiveFrom` date; before that it holds ' +
+  'only a scatter (well under 1% of most years), so ABSENCE BEFORE archiveFrom IS NOT EVIDENCE a filing was never ' +
+  'filed — check SEC EDGAR for earlier periods. Some rows are record-only (bodyStored: false — metadata from the ' +
+  'EDGAR index with no document body), so their text cannot be read here; open them at their sec.gov URL.';
 
 import { z } from 'zod/v3';
 import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -36,8 +39,42 @@ import { type Signal8ApiClient } from '../api-client.js';
 import { toolHandler } from './tool-handler.js';
 
 /** Every `search_sec_filings` argument, forwarded to /edgar/filings under the same name. */
+/**
+ * The archive's full-text query syntax (sec-extraction Wave 2), shared by
+ * `search_sec_filings.q` and `search_filing_text.pattern`.
+ */
+const QUERY_SYNTAX =
+  'Query syntax: unquoted words must ALL appear (any order, any distance); "quoted phrase" = exact wording; ' +
+  'OR between alternatives (merger OR acquisition); -word or -"phrase" to exclude; w1 NEAR/10 w2 (also ' +
+  'NEAR(10), or bare NEAR = within 10) = words close together; word* = prefix of 4+ letters (dilut* matches ' +
+  'dilution, dilutive); $AAPL or a capitalised ticker scopes to that company; a form code (8-K, 10-Q, S-1), ' +
+  '"item 5.02" / "8-K 1.05" and a bare year (2024) scope to that form / 8-K item / year.';
+
+/**
+ * Wave 3 (archive mapping v2): section search + exhibit-type filter, shared by
+ * both search tools.
+ */
+const SECTION_DESC =
+  'Restrict MATCHING to sections (comma-separated): business, risk_factors, cybersecurity, legal_proceedings, ' +
+  'mdna, market_risk, controls (10-K/10-Q/20-F narrative items, by meaning — mdna is 10-K Item 7, 10-Q Part I ' +
+  'Item 2 and 20-F Item 5), ex99 (press-release / EX-99.x exhibit text) and item_X_YY (the text under an 8-K ' +
+  'item, e.g. item_5_02). Aliases: mda, risk, legal, cyber, press_release, 5.02. Unknown names are a 400. ' +
+  'Needs q. Applied ONLY when the response\'s meta.sections names it — otherwise meta.unsupported says why ' +
+  '(e.g. the archive index does not have sections yet) and matches may come from ANYWHERE in the filing.';
+const EXHIBIT_TYPES_DESC =
+  'Keep only filings carrying ANY of these exhibit types (comma-separated): a family such as EX-10 (material ' +
+  'contracts) matches every member (EX-10.1, EX-10.2…); an exact type such as EX-99.1 (usually the press ' +
+  'release) only itself. Others: EX-97 clawback policy, EX-3 charter/bylaws, EX-4 instruments/warrants, ' +
+  'EX-21 subsidiaries, EX-23 consents. "10.1" is accepted for EX-10.1. Listed in appliedFilters when the rows ' +
+  'prove it; otherwise in ignoredFilters / meta.unsupported — treat the rows as unfiltered then.';
+const MATCHED_SECTIONS_DESC =
+  'Per-row `matchedSections` (default true): the sections the text matched in. ABSENT on a row means not ' +
+  'measured (index without sections), never "matched nowhere".';
+
 const SEARCH_SEC_FILINGS_PARAMS = [
-  'ciks', 'q', 'sort', 'cursor', 'page', 'pageSize', 'formTypes', 'excludeForms', 'items', 'dateFrom', 'dateTo',
+  'ciks', 'q', 'sort', 'match', 'facets', 'understand', 'section', 'exhibitTypes', 'matchedSections',
+  'cursor', 'page', 'pageSize', 'formTypes', 'excludeForms',
+  'items', 'dateFrom', 'dateTo',
   'minMarketCap', 'maxMarketCap', 'minFloat', 'maxFloat', 'minPrice', 'maxPrice',
   'sectors', 'industries', 'exchanges', 'companyTypes', 'foreignIssuer', 'recentIpo',
 ] as const;
@@ -125,16 +162,31 @@ export function registerEdgarTools(server: McpServer, client: Signal8ApiClient):
         '`totalRelation` ("eq" exact; "gte" a lower bound when the count was cut at 10,000 — then `totalEstimate`, ' +
         'when present, is "about N"), `hasMore` and `nextCursor`. With `q`, unfiltered rows also carry `rank` and a ' +
         '`snippet`. ' + ARCHIVE_SCOPE + ' ' +
-        'Full-text `q` uses websearch syntax: unquoted words must ALL appear (any order, any distance); "quoted ' +
-        'phrase" for an exact phrase; OR between alternatives; -word to exclude. An empty text result is only ' +
+        'Full-text `q`: ' + QUERY_SYNTAX + ' The archive\'s reading of the query (tickers/companies, forms, items, ' +
+        'years, synonym expansions such as buyback → share repurchase) is returned in `meta.understanding` when ' +
+        'stated; pass understand=false to search the words literally. Pass facets=true for `facets` — counts of ' +
+        'matching filings per form type, per year and per 8-K item over the WHOLE result set (absent when not ' +
+        'measured, e.g. on the Postgres engine — never read absence as zero). With sort=relevance, page 1 shows at ' +
+        'most a few filings per company; meta.diversity { maxPerCompany, hidden: [{cik, count}] } names who has ' +
+        'more — page on with nextCursor (not page) or filter by that CIK. SECTION SEARCH: section=risk_factors ' +
+        '(or mdna, business, ex99 for press releases, item_5_02, …) restricts matching to those sections; rows ' +
+        'then carry matchedSections and meta.sections confirms it — if meta.unsupported names section instead, the ' +
+        'whole filing was searched. exhibitTypes=EX-10 keeps filings with a material contract (EX-99.1 press ' +
+        'release, EX-97 clawback, …); facets=true adds facets.sections / facets.exhibitTypes when measured. ' +
+        'An empty text result is only ' +
         'definitive when the response\'s `searchIndex.complete` is true — otherwise `notes` says the index has not ' +
-        'confirmed full coverage of the range. ' +
+        'confirmed full coverage of the range. Every response carries `archiveFrom` and `rangeStartsBeforeArchive`: ' +
+        'a range with no dateFrom, or starting before archiveFrom, is NEVER definitive (`searchIndex.complete: false`, ' +
+        '`reason: "outside_held_range"`, `heldFrom`) and `notes` says so — report "the archive only holds filings ' +
+        'from <archiveFrom>; absence before that is not evidence", never "no such filing exists". Pass a dateFrom on ' +
+        'or after archiveFrom for a definitive empty answer. ' +
         'The `ciks` filter matches the filing\'s own CIK: an insider Form 4 filed under the reporting owner\'s CIK ' +
         'is NOT returned for the issuer\'s CIK. ' +
         'COMPANY FILTERS (any of minMarketCap … recentIpo) are served from the archive only, using Signal8\'s ' +
         'company data: (1) only issuer-filed forms are searched (10-K, 10-Q, 8-K, S-1, S-3, 424B*, DEF 14A, 20-F, ' +
         '6-K, …); third-party forms such as Form 4, 144 and SCHEDULE 13D/G are dropped and listed in ' +
-        '`companyFilter.droppedForms`, and with no formTypes the default is 10-K, 10-Q, 8-K, S-1, S-3, DEF 14A, ' +
+        '`companyFilter.droppedForms` — unless `companyFilter.subjectMatch` is true, in which case they ARE ' +
+        'searched, matched by the company they are about — and with no formTypes the default is 10-K, 10-Q, 8-K, S-1, S-3, DEF 14A, ' +
         '20-F, 40-F, 6-K; (2) companies with no measured value for a filter are EXCLUDED, never assumed, and ' +
         '`companyFilter.unknown` counts them per filter; (3) unknown values (e.g. a misspelt sector) are a 400 that ' +
         'lists the allowed names; (4) when the archive cannot answer (e.g. a date range it does not fully hold yet) ' +
@@ -149,13 +201,32 @@ export function registerEdgarTools(server: McpServer, client: Signal8ApiClient):
           'Comma-separated CIK numbers to filter by (e.g., "320193,1018724"; zero-padded also accepted)',
         ),
         q: z.string().max(500).optional().describe(
-          'Full-text query over filing bodies, websearch syntax: all unquoted words must appear; "quoted phrase" ' +
-          'for exact wording; OR for alternatives; -word to exclude (e.g. \'"going concern" -"no longer"\').',
+          'Full-text query over filing bodies. ' + QUERY_SYNTAX +
+          ' Example: \'$AAPL "share repurchase" -"no longer"\', \'cyber* NEAR/10 incident\', \'item 5.02 resign*\'.',
         ),
         sort: z.enum(['newest', 'relevance']).optional().describe(
-          'newest (by acceptance time, default) or relevance (requires q; ranks the newest 500 matches, 250 for a ' +
-          'quoted phrase)',
+          'newest (by acceptance time, default) or relevance (requires q; best match first)',
         ),
+        match: z.enum(['exact', 'stemmed']).optional().describe(
+          'Word matching for q. exact = a word matches only itself ("split" does NOT match "splits" or ' +
+          '"splitting") — EDGAR full-text search\'s own behaviour; stemmed = English word variations also match. ' +
+          'Default when omitted: stemmed. The mode actually APPLIED is in the response\'s meta.matchMode (with ' +
+          'meta.matchModeFallbackReason when it differs from the one asked for); meta.engine names the search ' +
+          'engine. Ignored without q.',
+        ),
+        facets: z.boolean().optional().describe(
+          'true = also return `facets`: { forms, years, items }, each a list of { value, count } over the WHOLE ' +
+          'result set (not just this page). Present only when the archive measured them (its OpenSearch engine); ' +
+          'absent means NOT MEASURED, never zero. Default false.',
+        ),
+        understand: z.boolean().optional().describe(
+          'Query understanding (default true): the archive recognises tickers/$TICKER, company names, form codes, ' +
+          '"item N.NN" and expands synonyms, reporting what it applied in meta.understanding. false = search the ' +
+          'words literally (also disables synonym expansion). Ignored without q.',
+        ),
+        section: z.string().max(400).optional().describe(SECTION_DESC),
+        exhibitTypes: z.string().max(400).optional().describe(EXHIBIT_TYPES_DESC),
+        matchedSections: z.boolean().optional().describe(MATCHED_SECTIONS_DESC + ' Ignored without q.'),
         cursor: z.string().optional().describe(
           'Opaque keyset cursor from a previous response\'s pagination.nextCursor. Prefer it over page for deep ' +
           'paging — it is stable while new filings arrive. Required for page 2+ of a company-filtered search.',
@@ -175,7 +246,11 @@ export function registerEdgarTools(server: McpServer, client: Signal8ApiClient):
           'Comma-separated 8-K item codes, ALL required (e.g., "2.02,9.01" = results + financial statements; ' +
           '"5.02" = officer/director changes; "1.01" = material agreements; "3.01" = delisting notice).',
         ),
-        dateFrom: z.string().optional().describe('Start filing date (YYYY-MM-DD). The archive starts 2021-10.'),
+        dateFrom: z.string().optional().describe(
+          'Start filing date (YYYY-MM-DD). The archive only holds filings from its `archiveFrom` date (stated in ' +
+          'every response; currently late 2021, expanding back to 2016): omitting dateFrom, or starting earlier, ' +
+          'makes an empty result non-definitive.',
+        ),
         dateTo: z.string().optional().describe('End filing date (YYYY-MM-DD)'),
         minMarketCap: z.number().min(0).optional().describe(
           'COMPANY FILTER. Minimum market cap in USD (price × shares outstanding), e.g. 50000000 for $50M',
@@ -188,12 +263,13 @@ export function registerEdgarTools(server: McpServer, client: Signal8ApiClient):
         minPrice: z.number().min(0).optional().describe('COMPANY FILTER. Minimum latest share price in USD'),
         maxPrice: z.number().min(0).optional().describe('COMPANY FILTER. Maximum latest share price in USD'),
         sectors: z.string().optional().describe(
-          'COMPANY FILTER. Comma-separated sector names, exact and case-sensitive (e.g. "Healthcare,Technology"). ' +
+          'COMPANY FILTER. Sector names separated by "|" (or a bare comma), exact and case-sensitive (e.g. "Healthcare|Technology"). ' +
           'An unknown name returns a 400 listing every valid sector.',
         ),
         industries: z.string().optional().describe(
-          'COMPANY FILTER. Comma-separated industry names, exact and case-sensitive (e.g. "Biotechnology"). An ' +
-          'unknown name returns a 400 listing every valid industry.',
+          'COMPANY FILTER. Industry names separated by "|", exact and case-sensitive (e.g. ' +
+          '"Biotechnology|Airlines, Airports & Air Services" — some names contain ", ", so prefer "|"; a bare comma with no ' +
+          'space after it also separates). An unknown name returns a 400 listing every valid industry.',
         ),
         exchanges: z.string().optional().describe(
           'COMPANY FILTER. Comma-separated listing venues: NASDAQ, NYSE, AMEX (= NYSE American), OTC',
@@ -222,6 +298,10 @@ export function registerEdgarTools(server: McpServer, client: Signal8ApiClient):
           if (v === undefined || v === null || v === '') continue;
           // recentIpo=false means "no filter"; the API accepts only 'true'.
           if (k === 'recentIpo' && v === false) continue;
+          // The API defaults (facets off, understanding on) are never sent explicitly.
+          if (k === 'facets' && v === false) continue;
+          if (k === 'understand' && v === true) continue;
+          if (k === 'matchedSections' && v === true) continue;
           params[k] = String(v);
         }
         return client.get('/edgar/filings', params);
@@ -381,15 +461,18 @@ export function registerEdgarTools(server: McpServer, client: Signal8ApiClient):
       description:
         'Full-text search across SEC filing content that returns the MATCHING PASSAGE: one match per filing, ' +
         'each with the exhibit it was found in (`exhibit_id`, `exhibit_type`) and the snippet with context. ' +
-        'Websearch syntax ("quoted phrase", OR, -exclude); unquoted words match anywhere in the filing, so quote ' +
-        'multi-word phrases. Best for locating specific clauses ("change of control", "anti-dilution", "right of ' +
+        QUERY_SYNTAX + ' Unquoted words match anywhere in the filing, so quote multi-word phrases. When the ' +
+        'archive states how it read the query it is in meta.understanding. Best for locating specific clauses ' +
+        '("change of control", "anti-dilution", "right of ' +
         'first refusal") and for getting the excerpt for a known filing (pass accessionNumber or filingId). Use ' +
         'search_sec_filings with `q` instead when you need filing-level paging (cursor), totals, date ranges, ' +
         '8-K item codes, excluded forms, or company filters. Optionally filter by company (CIK), filing, ' +
-        'accession number, or form type. ' + ARCHIVE_SCOPE,
+        'accession number, or form type, restrict matching to sections (section=risk_factors, mdna, ex99 …; ' +
+        'confirmed by meta.sections, otherwise meta.unsupported says the whole filing was searched) and filter by ' +
+        'exhibit type (exhibitTypes=EX-10). ' + ARCHIVE_SCOPE,
       inputSchema: z.object({
         pattern: z.string().min(2).describe(
-          'Search query (minimum 2 characters), websearch syntax: "exact phrase", OR, -exclude. ' +
+          'Search query (minimum 2 characters): "exact phrase", OR, -exclude, w1 NEAR/n w2, word*, $TICKER. ' +
           'A CIK/filing-scoped search whose text is not indexed yet falls back to a literal ' +
           'case-insensitive substring match (response engine: "substring").',
         ),
@@ -401,10 +484,32 @@ export function registerEdgarTools(server: McpServer, client: Signal8ApiClient):
         snippetLength: z.number().min(50).max(1000).optional().describe(
           'Characters of context around each match (default: 200)',
         ),
+        sort: z.enum(['newest', 'relevance']).optional().describe(
+          'Result order: newest (default) or relevance (best match first)',
+        ),
+        match: z.enum(['exact', 'stemmed']).optional().describe(
+          'Word matching. exact = a word matches only itself ("split" does NOT match "splits") — EDGAR full-text ' +
+          'search\'s behaviour; stemmed = English word variations also match. Default when omitted: stemmed. The ' +
+          'mode actually applied is reported in the response\'s meta.matchMode.',
+        ),
+        understand: z.boolean().optional().describe(
+          'Query understanding (default true): tickers/$TICKER, company names, form codes, "item N.NN" and synonym ' +
+          'expansion, reported in meta.understanding. false = match the words literally.',
+        ),
+        facets: z.boolean().optional().describe(
+          'true = also return `facets` { forms, years, items } — [{ value, count }] over the whole match set. ' +
+          'Absent when not measured (never zero). Default false.',
+        ),
+        section: z.string().max(400).optional().describe(SECTION_DESC),
+        exhibitTypes: z.string().max(400).optional().describe(EXHIBIT_TYPES_DESC),
+        matchedSections: z.boolean().optional().describe(MATCHED_SECTIONS_DESC),
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ pattern, cik, filingId, accessionNumber, formType, limit, snippetLength }) =>
+    async ({
+      pattern, cik, filingId, accessionNumber, formType, limit, snippetLength, sort, match, understand, facets,
+      section, exhibitTypes, matchedSections,
+    }) =>
       toolHandler(() =>
         client.get('/edgar/search-text', {
           pattern,
@@ -414,6 +519,14 @@ export function registerEdgarTools(server: McpServer, client: Signal8ApiClient):
           ...(formType ? { formType } : {}),
           ...(limit !== undefined ? { limit: String(limit) } : {}),
           ...(snippetLength !== undefined ? { snippetLength: String(snippetLength) } : {}),
+          ...(sort ? { sort } : {}),
+          ...(match ? { match } : {}),
+          // Only the non-default values (understanding on, no facets).
+          ...(understand === false ? { understand: 'false' } : {}),
+          ...(facets === true ? { facets: 'true' } : {}),
+          ...(section ? { section } : {}),
+          ...(exhibitTypes ? { exhibitTypes } : {}),
+          ...(matchedSections === false ? { matchedSections: 'false' } : {}),
         }),
       ),
   );

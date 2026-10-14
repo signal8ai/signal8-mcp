@@ -137,6 +137,15 @@ describe('dilution tools', () => {
     expect(d).toContain('lower bound');
   });
 
+  // 2026-10-14: the floor's SCOPE and per-reason cause are named, so an LLM
+  // never hedges Overhead Supply for an offering-capacity floor.
+  it('get_dilution_risk names the floor scope and every reason', () => {
+    const d = toolMap.get('get_dilution_risk')!.config.description!;
+    expect(d).toContain('levelsLowerBoundScope');
+    for (const r of ['unquantified_live_instruments', 'offering_capacity_unknown', 'market_cap_unmeasured']) expect(d).toContain(r);
+    expect(d).toMatch(/NOT `overheadSupply`/);
+  });
+
   it('get_dilution_snapshot states the float ceiling is a bound, not a float', () => {
     const d = toolMap.get('get_dilution_snapshot')!.config.description!;
     expect(d).toContain('floatWithheldReason');

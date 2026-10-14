@@ -122,7 +122,20 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
         '(institutional/insider/beneficial totals and percentages, plus the `retail` residual) are always included in full. ' +
         '`retail` is the UNATTRIBUTED residual: shares no filing accounts for, which includes recent offering buyers ' +
         'and acquisition holders who have not filed as well as retail investors — an upper bound on retail, never a retail count. ' +
-        'When `retail.reason` is `filed_exceeds_outstanding` the residual is withheld (null) because the counted filings exceed the shares outstanding.',
+        'When `retail.reason` is `filed_exceeds_outstanding` the residual is withheld (null) because the counted filings exceed the shares outstanding. ' +
+        '🔴 A bucket (`institutional` / `insider` / `beneficial`) whose shares exceed the shares outstanding by more than a 2% timing tolerance has its ' +
+        '`percentOfOutstanding` WITHHELD — null, with `percentWithheldReason: "ownership_exceeds_outstanding"` — and its `totalShares` still published: the ' +
+        'percent would not be a measurement (filings on another share basis such as ordinary shares against an ADS count, another class reported under this one, ' +
+        'shares lent and reported by both lender and buyer, or filings dated before a buyback or redemption). Report the share figure and the reason; NEVER present ' +
+        'such a bucket as 100%, as 0%, or as any percent. When any bucket is withheld, `retail.reason` is `ownership_exceeds_outstanding` and `filedSumPercent` is absent. ' +
+        'A null percent with NO `percentWithheldReason` means no share count was available — not measured for a different reason.' +
+        ' `sharesOutstanding` is the denominator of every percentage and is DATED: `sharesOutstandingAsOf` + `sharesOutstandingAsOfKind` ' +
+        '("stated" = the issuer\'s statement date; "checked" = when the figure was last confirmed against a vendor; "none" = date not recorded) ' +
+        'and `sharesOutstandingSource` (a vendor-free label). Never present a count without its date. ' +
+        '`beneficial.staleShares` / `stalePercentOfOutstanding` / `staleHolderCount` is a MEASURED SUBSET of the counted 5%+ total resting on ' +
+        '13D/G schedules >= 24 months old with no newer reaffirming filing by the same holder family — not a deduction; the total still includes it. ' +
+        'A row\'s `reaffirmedBy` names the newer family filing; `staleFiling.ageMonths` marks a counted row with none. `stalePercentOfOutstanding: null` ' +
+        'is not measurable (no share count), never zero.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
         limit: z.number().int().min(1).max(100)
@@ -437,7 +450,13 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
         'buy/sell transactions with insider name, title, shares, price, and transaction codes. ' +
         'Supports pagination for companies with extensive insider activity. Filter by year/month ' +
         'to narrow results, or use transactionCode to find only purchases (P), sales (S), etc. ' +
-        'Useful for identifying "first insider buy since X" patterns.',
+        'Useful for identifying "first insider buy since X" patterns. ' +
+        'IMPORTANT: each row\'s sharesOwnedFollowing is the holding on THAT row\'s ownership line only ' +
+        '(securityTitle + directOrIndirect + natureOfOwnership), NOT the insider\'s total position — insiders ' +
+        'often report several lines. holdingsByInsider lists every line with its as-of filing; its ' +
+        'sumOfReportedLines is not beneficial ownership (lines can be stale). Never compute a "% of position" ' +
+        'from one row; use 13D/13G totals, or omit the percentage. A trade re-reported in a later filing is ' +
+        'listed once.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
         limit: z.number().min(1).max(100).optional().describe(
