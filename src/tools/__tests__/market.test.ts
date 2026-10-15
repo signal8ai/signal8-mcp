@@ -38,7 +38,7 @@ describe('market tools', () => {
   });
 
   // The batch/universe/snapshot/top-performers tools were block-commented out
-  // in the 2026-06-13 FMP market-data rights review; only these three actually
+  // in the 2026-06-13 market-data licensing review; only these three actually
   // register. get_trading_halts was added in task-2286 (feature-2260).
   it('registers the 3 active market tools', () => {
     expect(server.tools.map((t) => t.name).sort()).toEqual(
@@ -61,7 +61,7 @@ describe('market tools', () => {
 
   // NOTE: get_quotes_batch / get_quotes_universe / get_index_snapshot /
   // get_sector_etf_snapshot / get_top_performers are block-commented out in
-  // market.ts (2026-06-13 FMP market-data rights review). Their tests were
+  // market.ts (2026-06-13 market-data licensing review). Their tests were
   // removed in task-2286 — they had been silently masked by bail:1 behind the
   // stale "registers all 7" assertion and referenced tools that no longer
   // register. Re-add their coverage if/when those tools are re-enabled.

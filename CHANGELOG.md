@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-10-15
+
+### Changed
+
+- **Tool descriptions no longer name third-party market-data vendors.** Float,
+  float-history and screener descriptions now say "a market-data vendor tier".
+- **`get_dilution_risk`: `overheadSupply` is now total potential dilution excluding
+  shelf** (warrants / convertibles / preferred at gross counts, plus ATM and
+  equity-line remaining at the current price, plus live S-1 shares, plus effective
+  resale overhang) banded Low up to 20% / Medium 20-50% / High over 50% of shares
+  outstanding. The description names `details.overheadSupplyBasis` and the new floor
+  reason `overhead_capacity_unquantified`.
+- **`get_dilution_risk`: per-level floor, ceiling and best estimate**
+  (`details.levelBounds`). A level whose floor and ceiling agree is exact and is no
+  longer listed in `levelsLowerBoundScope`; an ATM / equity line with no stated
+  remaining is read as its authorised total less reported sales (or the full total
+  when it started after the last periodic report), recorded in
+  `atmRemainingBasis` / `elocRemainingBasis`.
+
 ## [0.18.0] - 2026-10-14
 
 ### Added
@@ -407,7 +426,7 @@ Tool count 92 → **101**.
   when each window populates and when the fields are `null`.
 - **`get_quotes_batch` / `get_quotes_universe` extended-hours fields**
   (task-1861) — previously zeroed out for batched calls during pre-market
-  and after-hours windows because the FMP cache layer dropped the
+  and after-hours windows because the vendor cache layer dropped the
   `preMarket*` / `afterHours*` columns. The cache key has been bumped so
   stale entries auto-invalidate, and the columns are now populated in the
   batch path during active windows (matches single-ticker `get_quote`).

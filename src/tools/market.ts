@@ -28,7 +28,7 @@ import { toolHandler } from './tool-handler.js';
  * Covers US equities (SPY, QQQ, DIA, IWM, VTI), volatility (VXX),
  * bonds (TLT), gold (GLD), oil (USO), and China (FXI).
  */
-// DISABLED with get_index_snapshot (rights review 2026-06-13):
+// DISABLED with get_index_snapshot (licensing review 2026-06-13):
 // const INDEX_ETFS = ['SPY', 'QQQ', 'DIA', 'IWM', 'VTI', 'VXX', 'TLT', 'GLD', 'USO', 'FXI'];
 
 /**
@@ -36,11 +36,11 @@ import { toolHandler } from './tool-handler.js';
  *
  * Currently active: get_top_movers, get_market_breadth, get_trading_halts.
  * The batch/universe/snapshot/top-performers tools remain block-commented out
- * behind the 2026-06-13 FMP market-data rights review.
+ * behind the 2026-06-13 market-data licensing review.
  */
 export function registerMarketTools(server: McpServer, client: Signal8ApiClient): void {
-  // DISABLED (rights review 2026-06-13): FMP batch-quote (market data) — we do NOT
-  // own an FMP market-data package. Gate until rights sorted.
+  // DISABLED (licensing review 2026-06-13): vendor batch-quote (market data) — pending a data
+  // licensing review.
   /*
   // ── Batch quotes ─────────────────────────────────────────────
   server.registerTool(
@@ -86,9 +86,9 @@ export function registerMarketTools(server: McpServer, client: Signal8ApiClient)
   );
   */
 
-  // DISABLED (rights review 2026-06-13): both call the FMP market-data endpoint
+  // DISABLED (licensing review 2026-06-13): both call a market-data endpoint
   // (/market/quotes, /market/sector-snapshot) which we don't own. Gated until
-  // re-pointed to our Polygon snapshots (see TODO in QA-AUDIT-TRACKER.md).
+  // re-pointed to our own snapshots (see TODO in QA-AUDIT-TRACKER.md).
   /*
   // ── Index snapshot ───────────────────────────────────────────
   server.registerTool(
@@ -269,8 +269,8 @@ export function registerMarketTools(server: McpServer, client: Signal8ApiClient)
     async () => toolHandler(() => client.get('/trading-halts')),
   );
 
-  // DISABLED (rights review 2026-06-13): FMP price-change/index-constituents (market
-  // data) — not in our FMP packages. Gate until rights sorted.
+  // DISABLED (licensing review 2026-06-13): price-change/index-constituents (market
+  // data) — pending a data licensing review.
   /*
   // ── Top performers ──────────────────────────────────────────
   server.registerTool(

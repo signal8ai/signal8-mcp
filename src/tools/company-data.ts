@@ -36,7 +36,10 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'when that count is unavailable it is null with marketCapWithheldReason set — ' +
         'NOT MEASURED, never "no market cap" and never $0. The count itself rides as `sharesOutstanding` with ' +
         '`sharesOutstandingAsOf` + `sharesOutstandingAsOfKind` ("stated" = the issuer\'s statement date; "checked" = when it was last ' +
-        'confirmed against a vendor; "none" = date not recorded) and a vendor-free `sharesOutstandingSource` — quote the date with the count.',
+        'confirmed against a vendor; "none" = date not recorded) and a vendor-free `sharesOutstandingSource` — quote the date with the count. ' +
+        'When no MEASURED count exists, `sharesOutstanding` and `marketCap` are a BEST ESTIMATE (the newest dated filed or reference count, ' +
+        'moved onto today\'s split basis): `sharesOutstandingEstimated: true`, `sharesOutstandingEstimateKind` ("at_least" = the filings record ' +
+        'later issuances of unstated size, so the true count is likely higher) and `marketCapEstimated: true`. Say it is an estimate and give its date.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),
@@ -124,7 +127,7 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         '"affiliate_unreconciled" | "share_count_unavailable" | "split_post_dates_basis" | "split_unconfirmed" | "snapshot_float_unconfirmed" | "refusal_evaluation_failed") means the figure was deliberately ' +
         'WITHHELD by the snapshot AND no lower tier could answer — do not substitute a vendor float of your own. ' +
         'Since 2026-09-29 a snapshot that withheld its float FALLS THROUGH: when a lower tier can answer, "source" ' +
-        'names that tier (computed / sec-10k / polygon / fmp), "floatShares" is ITS figure under ITS definition, and ' +
+        'names that tier (computed / sec-10k / a market-data vendor tier), "floatShares" is ITS figure under ITS definition, and ' +
         '"snapshotFloatWithheldReason" carries the snapshot\'s reason as context ("the filing-derived snapshot could ' +
         'not state a float; showing <source>"). Read that field as provenance, never as a second refusal. ' +
         '🔴 SINCE 2026-10-03 THE SNAPSHOT FIGURE ALWAYS HEADLINES: when the snapshot carries ANY figure — "floatEstimate" ' +
@@ -136,7 +139,7 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'ceiling ("tradeableFloatCeiling", a "floatEstimate" with bound "ceiling", or an upper-only "affiliateBasis" ' +
         'range) at or above 99% of the share count says only "the float is at most every issued share" and is ' +
         'STRIPPED from the response (null), so the lower tier may headline under its own "source" with ' +
-        '"snapshotFloatWithheldReason" as context (GELS: Polygon 5.12M, not "<= 11.18M" on 11.18M shares). ' +
+        '"snapshotFloatWithheldReason" as context (e.g. a vendor figure of 5.12M, not "<= 11.18M" on 11.18M shares). ' +
         'Floors and point estimates are never stripped. EXCEPT (2026-10-08): a "floatEstimate" with rung ' +
         '"affiliate_sizing_estimate" carries a "reason" built from the filings\' itemised insiders (e.g. "no reported ' +
         'insider holdings (4 affiliates at zero); 1 unreported: <name> (CFO, since <date>)") and "unsizedAffiliates" ' +
@@ -219,7 +222,7 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'IMPORTANT: this series is FORWARD-ONLY — it began accumulating in mid-2026 and is ' +
         'NOT backfilled, so early/absent history is expected and an empty rows array is a ' +
         'normal result, not an error or a delisted company. Each row carries "source" ' +
-        '("polygon" | "computed" | "sec_10k" | "fmp") because float quality varies by ' +
+        '("computed" | "sec_10k" or a market-data vendor tier) because float quality varies by ' +
         'provider — weigh rows accordingly rather than treating all sources as equal. ' +
         'Charged per your API tier.',
       inputSchema: z.object({
@@ -372,8 +375,8 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
 
   // ── Research ──────────────────────────────────────────────────
 
-  // DISABLED (rights review 2026-06-13): FMP stock-peers dataset — not in our FMP
-  // packages. Gate until rights sorted.
+  // DISABLED (licensing review 2026-06-13): stock-peers dataset — pending a data
+  // licensing review.
   /*
   server.registerTool(
     'get_peers',
@@ -400,8 +403,8 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
   );
   */
 
-  // DISABLED (review 2026-06-13): we do not have redistribution rights for transcript
-  // data in our provider contract. Do not expose.
+  // DISABLED (review 2026-06-13): transcript data is pending a licensing review.
+  // Do not expose.
   /*
   server.registerTool(
     'get_transcripts',

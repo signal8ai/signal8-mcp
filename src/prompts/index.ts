@@ -243,6 +243,7 @@ export function registerAllPrompts(server: McpServer, _client: Signal8ApiClient)
               '   - NULL, absent or withheld means NOT MEASURED. Never write "no warrants", "no shelf", "no dilution" or zero from a missing value. A numeric 0 is a measured zero only when its availability field says so.',
               '   - Report the risk score as `score`/`scoreMaxMeasured` and name the components in `scoreUnmeasuredComponents`. Never rescale it to /100. A non-null `scoreWithheldReason` means there is NO score, not a score of zero.',
               '   - When `levelsAreLowerBound` is true, say AT LEAST only for the levels named in `levelsLowerBoundScope`, and give `levelsLowerBoundReason` as the cause.',
+              '   - When `details.levelBounds[level].estimated` is true, you may state `bestEstimate` as the likely level, labelled a best estimate, with its floor and ceiling and `estimateBasis`.',
               '   - If the float is withheld (`floatWithheldReason`), say it was not measured; never substitute another float. A `tradeableFloatCeiling` is an upper bound ("at most").',
               '   - If `goingConcern` is true, report it alongside any runway figure, never the runway alone.',
               '   - Instrument totals with withheld rows are LOWER BOUNDS — say so.',

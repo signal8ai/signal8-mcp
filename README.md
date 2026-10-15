@@ -208,7 +208,7 @@ is the cheapest way to learn whether there is anything to fetch.
 | Tool | Description |
 |------|-------------|
 | `get_dilution_coverage` | Whether a ticker has a dilution analysis, how fresh it is, and why not if it doesn't |
-| `get_dilution_risk` | Dilution Pressure Score with its seven-component breakdown and risk levels. A partial score is out of `scoreMaxMeasured` (never rescale to /100); `overall`/`overheadSupply` are floors ("at least") when `levelsAreLowerBound` is true |
+| `get_dilution_risk` | Dilution Pressure Score with its seven-component breakdown and risk levels. A partial score is out of `scoreMaxMeasured` (never rescale to /100); `overheadSupply` is total potential dilution excluding shelf (gross warrants/convertibles + ATM/equity line/S-1 at the current price, `details.overheadSupplyBasis`); levels named in `levelsLowerBoundScope` are floors ("at least") when `levelsAreLowerBound` is true; `details.levelBounds` gives each level's floor, ceiling and best estimate (a level whose floor and ceiling agree is exact) |
 | `get_dilution_snapshot` | Potential new shares and % of shares outstanding, cash position and runway, float |
 | `get_dilution_instruments` | One instrument family's rows with per-field SEC citations (warrants, convertibles, preferred, shelfs, atms, elocs, s1_offerings, equity_plans, exchangeables, recent_offerings) |
 | `get_baby_shelf_capacity` | S-3 I.B.6 baby shelf: how much the issuer can raise off its shelf right now |

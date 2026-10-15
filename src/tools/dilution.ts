@@ -148,6 +148,10 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         'breakdown (shelf capacity, ATM/equity-line capacity, warrants in the money, ' +
         'convertible proximity, cash burn urgency, historical dilution, toxic financing), ' +
         'plus four risk levels — overall, offering ability, overhead supply, cash need. ' +
+        'When the filings state no current share count, components that need the share count or market cap ' +
+        '(warrants in the money, shelf / ATM capacity) are scored on the best-estimate share count — ' +
+        '`details.sharesOutstandingEstimate` {shares, kind, asOf, source} and `details.marketCapSource: ' +
+        '"derived_price_x_estimated_os"` say so; report those components as resting on an estimate. ' +
         '🔴 THE SCORE IS MEANINGLESS WITHOUT `scoreMaxMeasured` AND `scoreWithheldReason`: ' +
         'components whose inputs could not be measured are DROPPED FROM THE DENOMINATOR, so ' +
         'a score of 58 may be 58 out of 85, not out of 100. Always report it as ' +
@@ -167,17 +171,44 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         'equity line/registration states no remaining capacity) or `market_cap_unmeasured` ' +
         '(no market cap to compare capacity against) — both of which floor `overall` + ' +
         '`offeringAbility`, NOT `overheadSupply`; `os_growth_span_short` (share counts span under a ' +
-        'year, growth shown raw, not annualized — floors `historical` + `overall`). ' +
+        'year, growth shown raw, not annualized — floors `historical` + `overall`) or ' +
+        '`os_growth_issuance_floor` (the latest share count could not be reconciled with the share history, so ' +
+        'growth counts the last balance sheet plus only the filed issuances since — floors `historical` + `overall`) or ' +
+        '`os_growth_rebased_partial` (growth measured on the company\'s own filed share history put onto one split ' +
+        'basis, but some counts could not be placed — floors `historical` + `overall`) or ' +
+        '`overhead_capacity_unquantified` (a live ATM, equity line or S-1 could not be converted to shares — size not ' +
+        'stated or no current price — floors `overheadSupply` + `overall`). ' +
         'Name the stated reason, never another. ' +
+        '`details.levelBounds` (since 2026-10-15) gives, per level, `floor` (the published level, unsized ' +
+        'instruments counted at zero), `ceiling` (each unsized instrument at its filed maximum; null = some ' +
+        'instrument has no filed maximum), `exact` (floor and ceiling agree, or the floor is high — the unsized ' +
+        'instruments cannot move it, and the level is NOT in `levelsLowerBoundScope`), `bestEstimate` (each ' +
+        'unsized instrument at its most likely size, never below the floor), `estimated` and `estimateBasis` ' +
+        '(the assumptions, e.g. `atm_total_no_sales_reported`, `convertible_original_principal`). Signal8 ' +
+        'surfaces show an estimated level as its `bestEstimate`; when you report one, say it is a best ' +
+        'estimate and give the floor and ceiling — never present it as a measurement. ' +
+        '`offeringAbilityBasis` / `overheadSupplyBasis` `atmRemainingBasis` / `elocRemainingBasis` say how a ' +
+        'remaining was read: `total_minus_reported_sales` / `total_no_sales_reported` are the authorised total ' +
+        'less reported sales, or the full total for a program started after the last periodic report — "up to". ' +
+        '`details.osGrowthSource` names the share series behind `details.osGrowthRate`. When the rate is null, ' +
+        '`details.osGrowthFacts` {fromShares, fromDate, toShares, toDate, splitsInWindow, basis} may carry two dated ' +
+        'share counts from the filed history: a FACT, never a rating — the historical level stays not measured; ' +
+        'with `basis: "as_filed"` the two counts are not on one split basis and must not be compared as growth. ' +
         '`levelsAreLowerBound` is always present. A null `overall` with a non-null ' +
         '`levelsWithheldReason` is WITHHELD — not low. `offeringAbility` is a capability ' +
         'profile, not pressure today: a live ATM/equity line whose drawable capacity is a ' +
         'MEASURED $0 (e.g. clamped by the I.B.6 cap) reads medium, while the score prices ' +
         'the $0 — do not describe that as the company being unable to raise. ' +
-        '`overheadSupply` bands in-the-money supply PLUS `details.registeredResaleOverhangShares` ' +
-        '(/`…Pct`): already-issued affiliate-held shares outside the tradeable float on an ' +
-        'EFFECTIVE resale registration — existing shares that can be sold today, never new ' +
-        'shares, so never add them to `totalDilutiveShares`; null means not measured. ' +
+        '`overheadSupply` is TOTAL POTENTIAL DILUTION EXCLUDING SHELF as a % of shares outstanding: ' +
+        'warrants, convertibles and preferred at their GROSS share counts, PLUS live ATM remaining ' +
+        '(baby-shelf clamped) and equity-line remaining converted to shares at the current price, PLUS ' +
+        'live S-1 registration shares, PLUS `details.registeredResaleOverhangShares` (already-issued ' +
+        'affiliate shares on an EFFECTIVE resale registration). Low up to 20%, Medium 20-50%, High over ' +
+        '50%. Shelf capacity is NOT in it (that is `offeringAbility`). `details.overheadSupplyBasis` gives ' +
+        'every component (`existingInstrumentShares`, `atmShares`, `elocShares`, `registeredShares`, ' +
+        '`priceUsed`, `priceAsOf`, `pctOfOs`) and `unquantified` lists inputs that could not be converted; ' +
+        'a null component is NOT MEASURED, never zero. It is NOT `inTheMoneySupplyPct` / ' +
+        '`totalDilutiveShares`, which stay treasury-stock netted in-the-money figures. ' +
         `${ALWAYS_200} ` +
         `${NOT_MEASURED} ` +
         `${AS_OF} ` +

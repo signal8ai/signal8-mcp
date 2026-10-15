@@ -288,7 +288,7 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
           .describe(
             'Also return rows that could not be RATED against the price / market-cap / float ' +
               'bounds above, because company_screener_data holds no value for them — typically ' +
-              'a symbol renamed or listed within the last day (the source is an FMP screener ' +
+              'a symbol renamed or listed within the last day (the source is a vendor screener ' +
               'that lags a rename by ~a day). Each such row carries "unscreenedFilters" naming ' +
               'the families that could not be applied, and the matching value field is null. ' +
               'READ THAT AS NOT MEASURED — never as "matched" or "did not match". Default ' +
