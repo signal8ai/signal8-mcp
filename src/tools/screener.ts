@@ -53,13 +53,24 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
       description:
         'Since 2026-10-03 the float column ALWAYS carries the dilution snapshot\'s own figure when the snapshot has one: ' +
         '"float" is the measured POINT float (null on a withheld snapshot row), and such a row then carries ' +
-        '"floatEstimate" (shares) + "floatEstimateBound" ("point" ~ / "ceiling" <= / "floor" >=) + "floatEstimateBasis" ' +
-        '(the working) — present it as the number with its marker, e.g. "<= 7,953,957". minFloat / maxFloat and the ' +
+        '"floatEstimate" (shares) + "floatEstimateBound" ("point" / "ceiling" / "floor") + "floatEstimateBasis" ' +
+        '(the working). RENDERING (2026-10-18): a "point" is the plain number with its basis as the caveat; a "ceiling" / ' +
+        '"floor" is a BOUND, not a figure — write "float not stated (at most / at least 7,953,957)", never the bare number ' +
+        'and never a "~" / "<=" / ">=" glyph. minFloat / maxFloat and the ' +
         'computed_float sort compare the figure\'s VALUE (COALESCE of the two), so a bounded row is kept; a row with ' +
         'neither is NOT MEASURED, never 0. 🔴 Never feed floatEstimate into a market cap, a percent-of-float or a ' +
         'short-interest ratio — a bound is not a point. ' +
         'Screen companies by price range, volume, cash runway, float, shares outstanding (each row\'s `shares_outstanding` is DATED by `sharesOutstandingAsOf` + `sharesOutstandingAsOfKind` (stated / checked / none = date not recorded) and a vendor-free `sharesOutstandingSource`; never present the count without its date), ' +
-        'market cap, industry, listing exchange (NASDAQ/NYSE/AMEX), float data source and TTM dividend yield. ' +
+        'market cap, industry, listing exchange (NASDAQ/NYSE/AMEX), listing market (market="otc" / "exchange" — the ' +
+        'reliable OTC test; the exchange label is inconsistent on OTC rows), float data source, TTM dividend yield and ' +
+        'snapshot cash (minCash / maxCash). ' +
+        'CASH RUNWAY: a null cash_runway_months carries cashRunwayReason saying why. "estimate_would_be_negative" means ' +
+        'the last cash figure rolled forward by the burn rate is below zero today — ESTIMATED exhausted, not a reported ' +
+        'zero balance (cashRunwayAsOf is the cash figure\'s date). Such rows have no months, so maxCashRunway drops ' +
+        'them unless includeRunwayExhausted=true. Any other reason, or a null reason, is NOT a runway claim. ' +
+        'CASH: estimatedCurrentCash (with estimatedCashAsOf) is the dilution snapshot\'s cash PROJECTION in USD, ' +
+        'present only for snapshot-covered companies — null means NOT MEASURED, never "no cash", and minCash / maxCash ' +
+        'can only return covered companies. Each row also carries listingMarket ("exchange" / "otc", null = unknown). ' +
         'Each row carries dividendYield (trailing-twelve-month cash dividends with an ex-date in the last 365 days ' +
         '/ current price, in percent), nextExDate and lastExDate — null means NOT MEASURED or not a payer, never 0%. ' +
         'Sort results by any sortable column. ' +
@@ -75,7 +86,11 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
           'Filter by company industry (exact match, e.g. "Biotechnology", "Software")',
         ),
         exchange: z.string().optional().describe(
-          'Filter by listing exchange (exact match): NASDAQ, NYSE, or AMEX',
+          'Filter by listing exchange (exact match): NASDAQ, NYSE, or AMEX. For OTC use market="otc" instead',
+        ),
+        market: z.enum(['exchange', 'otc']).optional().describe(
+          'Listing market: "otc" (OTC Markets) or "exchange" (NASDAQ / NYSE / NYSE American / Arca / Cboe). ' +
+          'Companies with no listing record match neither',
         ),
 
         // Numeric range filters - price
@@ -100,6 +115,20 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
         ),
         maxCashRunway: z.number().optional().describe(
           'Maximum estimated months of cash remaining',
+        ),
+        includeRunwayExhausted: z.boolean().optional().describe(
+          'When true, maxCashRunway also returns companies whose estimated cash is already exhausted ' +
+          '(cash_runway_months null, cashRunwayReason "estimate_would_be_negative"); they sort first on an ' +
+          'ascending runway sort. Default false',
+        ),
+
+        // Snapshot cash (USD)
+        minCash: z.number().min(0).optional().describe(
+          'Minimum dilution-snapshot cash projection in USD (estimatedCurrentCash). Snapshot-covered companies only',
+        ),
+        maxCash: z.number().min(0).optional().describe(
+          'Maximum dilution-snapshot cash projection in USD (estimatedCurrentCash). Snapshot-covered companies only — ' +
+          'an uncovered company is not measured, not excluded for having cash',
         ),
 
         // Numeric range filters - float
@@ -144,7 +173,7 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
           'ticker', 'price', 'change_percent', 'volume', 'industry',
           'cash_runway_months', 'shares_outstanding',
           'computed_float', 'market_cap_computed', 'updated_at',
-          'dividend_yield',
+          'dividend_yield', 'estimated_current_cash',
         ]).optional().describe(
           'Column to sort results by (default: volume)',
         ),
@@ -171,7 +200,7 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
       annotations: { readOnlyHint: true },
     },
     async (params) => {
-      const { excludeHalted, ...rest } = params;
+      const { excludeHalted, includeRunwayExhausted, ...rest } = params;
       const queryParams: Record<string, string> = {};
       for (const [key, value] of Object.entries(rest)) {
         if (value !== undefined) {
@@ -182,6 +211,10 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
       // boolean-coercion trap and the default (include halted) needs no param.
       if (excludeHalted === true) {
         queryParams.excludeHalted = 'true';
+      }
+      // Same trap, same rule.
+      if (includeRunwayExhausted === true) {
+        queryParams.includeRunwayExhausted = 'true';
       }
       return toolHandler(() => client.get('/screener', queryParams));
     },

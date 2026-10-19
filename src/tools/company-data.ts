@@ -38,8 +38,10 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         '`sharesOutstandingAsOf` + `sharesOutstandingAsOfKind` ("stated" = the issuer\'s statement date; "checked" = when it was last ' +
         'confirmed against a vendor; "none" = date not recorded) and a vendor-free `sharesOutstandingSource` — quote the date with the count. ' +
         'When no MEASURED count exists, `sharesOutstanding` and `marketCap` are a BEST ESTIMATE (the newest dated filed or reference count, ' +
-        'moved onto today\'s split basis): `sharesOutstandingEstimated: true`, `sharesOutstandingEstimateKind` ("at_least" = the filings record ' +
-        'later issuances of unstated size, so the true count is likely higher) and `marketCapEstimated: true`. Say it is an estimate and give its date.',
+        'moved onto today\'s split basis): `sharesOutstandingEstimated: true`, `sharesOutstandingEstimateKind` ("stated_as_of" = the ISSUER\'s last ' +
+        'stated count, a dated point; the filings record later issuances LISTED in `statedAsOf.events`, not added — "at_least" is the retired name ' +
+        'of the same state) and `marketCapEstimated: true` with `marketCapAsOf` (the count\'s date). Render a stated_as_of count WITH its date and its ' +
+        'events ("2,357,498 as of 2026-10-08 · plus an offering closed 2026-10-09 whose share count is not stated"); never as a bound, never as today\'s count.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),
@@ -83,7 +85,10 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'percent-of-float is never struck off a bound — do NOT divide "shortInterest" by a ceiling, floor or ' +
         'estimate from get_float yourself; "float_unavailable" = no float of any kind on record; ' +
         '"short_pct_of_float_unreconciled" = a point float existed but the ratio was implausible or the ' +
-        'split basis could not be resolved. A null percent is NOT MEASURED, never 0%.',
+        'split basis could not be resolved; "float_class_scope_mismatch" = the float on record POOLS more than ' +
+        'one separately listed share class (e.g. Class A + Class D) while short interest is reported for this ' +
+        'symbol\'s class only — do NOT divide "shortInterest" by get_float\'s figure yourself for that ticker. ' +
+        'A null percent is NOT MEASURED, never 0%.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),
@@ -131,8 +136,12 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         '"snapshotFloatWithheldReason" carries the snapshot\'s reason as context ("the filing-derived snapshot could ' +
         'not state a float; showing <source>"). Read that field as provenance, never as a second refusal. ' +
         '🔴 SINCE 2026-10-03 THE SNAPSHOT FIGURE ALWAYS HEADLINES: when the snapshot carries ANY figure — "floatEstimate" ' +
-        '(~ point / <= ceiling / >= floor), "tradeableFloatCeiling", or an "affiliateBasis" range — "floatShares" stays ' +
-        'null and THAT figure is the answer, with its label; a lower tier that also answered and passed the guard rides ' +
+        '(bound "point" / "ceiling" / "floor"), "tradeableFloatCeiling", or an "affiliateBasis" range — "floatShares" stays ' +
+        'null and THAT figure is the answer. 🔴 RENDERING RULE (2026-10-18): print NO "~", "<=" or ">=" glyph. A "point" ' +
+        '(or a "floatEstimate" carrying "statedAsOf" {asOf, source, events[]}, the issuer\'s own dated count) is printed as the PLAIN ' +
+        'number followed by "as of <asOf>" and the caveat (the unsized later issuances in "statedAsOf.events"); a "ceiling" / ' +
+        '"floor" / range is NOT a figure — write "float not stated (the filings put it at most / at least N; <reason>)" and never ' +
+        'the bare number. A lower tier that also answered and passed the guard rides ' +
         '"otherSourceFloat" {floatShares, source, provenance:"other_source", floatDefinition, asOfDate} as a SECONDARY ' +
         '"other source" line — never the float, never arithmetic. A lower tier fills "floatShares" ONLY when the ' +
         'snapshot carries no figure at all. 🔴 SINCE 2026-10-04 A TRIVIAL CEILING IS NOT A FIGURE: a snapshot ' +
@@ -181,10 +190,12 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'describes the estimate, not a float. Since 2026-09-29 it is the SNAPSHOT FLOAT LADDER figure ' +
         'on any withheld snapshot ticker and may also carry "rung" ("non_affiliate_estimate" | ' +
         '"shares_outstanding_ceiling" | "rolled_forward_lower_bound" | "recital_rolled_forward_estimate" | "successor_exchange_estimate" | "affiliate_sizing_estimate" | ' +
-        '"restricted_block_ceiling" — at most O/S less affiliates, less the restricted blocks the filings place outside them and the ' +
-        'part of the unplaced blocks too large to fit inside them), "bound" ("point" = about X, ' +
-        'render "~X"; "ceiling" = AT MOST X, render "<= X"; "floor" = AT LEAST X, render ">= X") and ' +
-        '"asOf"; a floor or ceiling is a BOUND, never a point value. null means no figure could be ' +
+        '"form4_rolled_forward_estimate" (2026-10-18: the ownership table\'s D&O floor rolled forward by the insiders\' own Form 4/5 transactions since the table date) | ' +
+        '"best_estimate" (2026-10-18, founder: EVERY covered ticker shows ONE float number — the last rung: the MOST LIKELY figure when every filing-derived rung withheld; "basisKind" says what it rests on: rolled_forward_itemised | issuer_recital | declared_floor | affiliates_only_blocks_overlap | pre_split_derived | unconfirmed_split_excluded | vendor_float (with "vendorSource" / "vendorStale") | shares_outstanding_less_sized_affiliates | shares_outstanding; "assumptions" itemises every unsized holder and how it was treated, and "reason" opens "Estimate:" — report it AS an estimate with its assumptions, never as a measurement) | ' +
+        '"restricted_block_ceiling" — since 2026-10-18 a POINT: O/S less affiliates, less the restricted blocks the filings place outside them and the ' +
+        'part of the unplaced blocks too large to fit inside them, labelled "excludes N unregistered shares (<holders>)" in "reason"), "bound" ("point" = X as of "asOf"; ' +
+        '"ceiling" = AT MOST X, render "<= X"; "floor" = AT LEAST X, render ">= X" — both only on payloads minted before 2026-10-18: the ladder now serves ONE dated point or nothing) and ' +
+        '"asOf"; a floor or ceiling is a BOUND, never a point value. "statedAsOf" (when present) dates the point at the issuer\'s last stated count and lists later issuances NOT in it; "staleness" flags a point older than 12 months or one a known issuance post-dates. null means no figure could be ' +
         'derived from the snapshot\'s structured fields. An estimate never becomes floatShares — present shares ' +
         'WITH basis and direction, never alone. Unrelated to the boolean "floatEstimated", which ' +
         'flags a published floatShares back-derived from a USD public-float disclosure. ' +
@@ -438,9 +449,13 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Get Company News',
       description:
-        'Get recent news articles and press releases for a company. Use when ' +
-        'researching recent developments, catalysts, or sentiment drivers. Set ' +
-        'pressReleasesOnly to return only official company press releases.',
+        'Get recent news articles, press releases and AI-analysed SEC filings for a company. Use when ' +
+        'researching recent developments, catalysts, or sentiment drivers. Filing rows (category ' +
+        '"sec_filing") are event-bearing forms only (8-K, 6-K, 424B prospectus supplements, S-1/F-1, ' +
+        '10-K/10-Q/20-F, SC 13D, proxies, delisting notices; never Form 3/4/5, 13G or bank-note 424B2) ' +
+        'and carry formType + accessionNumber; a filing that repeats a press release is omitted in ' +
+        'favour of the release. For a small foreign issuer that files its news as 6-Ks, the filing IS ' +
+        'the news. Set pressReleasesOnly to return only official company press releases (no filings).',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
         limit: z.number().int().min(1).max(20)

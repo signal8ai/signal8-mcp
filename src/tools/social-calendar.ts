@@ -54,6 +54,10 @@ export function registerSocialCalendarTools(
         'ticker, company name, the exact vendor integers (splitFrom/splitTo), a ' +
         'pre-rendered ratio ("1-for-20"), the effective date, market cap, float in ' +
         'SHARES, and price. ' +
+        'floatShares is on the SAME split basis as the market cap. floatBasis says what ' +
+        'it is: "measured", or "estimate" / "estimate_rebased" (the float ladder\'s point ' +
+        'estimate, moved across this split when it predates it) — present an estimate ' +
+        'as an estimate. ' +
         '🔴 floatShares: null MEANS NOT MEASURED OR WITHHELD — never zero, never "no ' +
         'float". Such rows ARE included (they have a valid market cap); ' +
         'floatWithheldReason says why. Do not substitute a float from another source. ' +

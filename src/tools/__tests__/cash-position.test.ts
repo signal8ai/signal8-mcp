@@ -83,6 +83,18 @@ describe('cash-position tools', () => {
       maxCashRunway: '6',
       sortBy: 'cash_runway_months',
       sortOrder: 'asc',
+      includeRunwayExhausted: 'true',
+    });
+  });
+
+  it('screen_must_raise omits exhausted companies only when asked, and forwards market', async () => {
+    const tool = toolMap.get('screen_must_raise')!;
+    await tool.handler({ includeExhausted: false, market: 'otc' });
+    expect(client.get).toHaveBeenCalledWith('/screener', {
+      maxCashRunway: '6',
+      sortBy: 'cash_runway_months',
+      sortOrder: 'asc',
+      market: 'otc',
     });
   });
 
@@ -93,6 +105,7 @@ describe('cash-position tools', () => {
       maxCashRunway: '3',
       sortBy: 'cash_runway_months',
       sortOrder: 'asc',
+      includeRunwayExhausted: 'true',
       industry: 'Biotechnology',
       limit: '10',
     });
@@ -216,5 +229,20 @@ describe('cash-position tools', () => {
     const call = client.get.mock.calls[0];
     expect(call[1].industry).toBe('Biotechnology');
     expect(call[1].limit).toBe('50');
+  });
+
+  it('get_cash_runway_calendar includes exhausted companies when the window starts today', async () => {
+    const tool = toolMap.get('get_cash_runway_calendar')!;
+    await tool.handler({ market: 'otc' });
+    const call = client.get.mock.calls[0];
+    expect(call[1].includeRunwayExhausted).toBe('true');
+    expect(call[1].market).toBe('otc');
+  });
+
+  it('get_cash_runway_calendar leaves exhausted companies out of a future window', async () => {
+    const tool = toolMap.get('get_cash_runway_calendar')!;
+    await tool.handler({ from: '2999-01-01', to: '2999-06-01' });
+    const call = client.get.mock.calls[0];
+    expect(call[1].includeRunwayExhausted).toBeUndefined();
   });
 });

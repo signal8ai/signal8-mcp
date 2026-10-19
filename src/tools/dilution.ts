@@ -242,8 +242,15 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         '🔴 FLOAT: when `floatWithheldReason` is non-null the tradeable float was NOT ' +
         'MEASURED and must not be stated as a number. `tradeableFloatCeiling` is an UPPER ' +
         'BOUND ("at most X"), NOT a float — never feed it to a market capitalisation, a ' +
-        'percent-of-float, a short-interest ratio or a comparison; render it with a ≤ and ' +
-        'say it is a bound. ' +
+        'percent-of-float, a short-interest ratio or a comparison; say in words that the float is ' +
+        'at most that figure (a bound) — never print it as a bare number and never with a ~ / ≤ / ≥ glyph (2026-10-18). ' +
+        '🔴 BOUNDED TOTALS: a null share total (`potentialNewShares`, `totalWarrantShares`, ' +
+        '`totalConvertibleShares`, `totalEquityPlanShares`, `totalExchangeableShares`, and ' +
+        '`potentialDilutionPercent`) may sit beside `<key>Bound: "ceiling"`, `<key>Ceiling` and ' +
+        '`<key>Floor`: some rows could not be placed on one split basis, but they can add at most a ' +
+        'provably small amount. Report the ceiling as "at most X" and the floor as the measured part — ' +
+        'NEVER the ceiling as the measured total, and never feed it to a ratio or comparison as if ' +
+        'measured. The null key itself still means not measured. ' +
         '🔴 RUNWAY: a runway figure beside `goingConcern: true` is a contradiction the ' +
         'issuer\'s own auditors have flagged — report both, never the runway alone. ' +
         `${ALWAYS_200} ` +

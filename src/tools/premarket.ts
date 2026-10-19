@@ -114,10 +114,11 @@ export function registerPremarketTools(server: McpServer, client: Signal8ApiClie
       description:
         'Get the live premarket scanner board — the top premarket gainers and losers by ' +
         'absolute gap %, each row enriched with rvol, marketCap, floatShares (the measured POINT float, null on a ' +
-        'withheld dilution-snapshot row — such a row then carries "floatEstimate" {shares, bound: "point" ~ | ' +
-        '"ceiling" <= | "floor" >=, basis}, the snapshot\'s own labelled figure: present it as the number with its ' +
-        'marker, never as a point, never in arithmetic; neither present = not measured, never 0. The low-float ' +
-        'board admits on that figure\'s VALUE: a <= 8M ceiling is in, a >= 26M floor or a ~27M estimate is out), short ' +
+        'withheld dilution-snapshot row — such a row then carries "floatEstimate" {shares, bound: "point" | ' +
+        '"ceiling" | "floor", basis}. RENDERING (2026-10-18): a "point" is printed as the plain number with its as-of and ' +
+        'caveat; a "ceiling" / "floor" is a BOUND, not a figure — say "float not stated (at most / at least N)" and never ' +
+        'the bare number, never a "~" / "<=" / ">=" glyph, never arithmetic; neither present = not measured, never 0. The ' +
+        'low-float board admits on that figure\'s VALUE: an 8M ceiling is in, a 26M floor or a 27M estimate is out), short ' +
         'interest, dilution, and news/catalyst flags. Listing-compliance data (row "compliance", the ' +
         'compliance/split badges, "reverseSplitSignal", "deficiencySignal") is Signal8 Pro: for any other caller ' +
         '"compliance" is null with "complianceWithheld": "pro_required" — WITHHELD, which is not "not measured" and ' +

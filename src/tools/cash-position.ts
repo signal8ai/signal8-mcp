@@ -110,10 +110,22 @@ export function registerCashPositionTools(server: McpServer, client: Signal8ApiC
         'Find companies with imminent capital raise needs based on estimated cash runway. ' +
         'Defaults to companies with less than 6 months of cash remaining, sorted by urgency ' +
         '(lowest runway first). Useful for identifying distressed companies, imminent dilution ' +
-        'situations, or potential financing catalysts. Runway is estimated from current burn rate.',
+        'situations, or potential financing catalysts. Runway is estimated from current burn rate. ' +
+        'Companies whose ESTIMATED cash is already exhausted are included by default and listed first: ' +
+        'they carry cash_runway_months null with cashRunwayReason "estimate_would_be_negative" (the last ' +
+        'cash figure, dated cashRunwayAsOf, rolled forward by the burn rate is below zero today). That is an ' +
+        'estimate from a dated balance, never a reported zero balance — say "estimated exhausted as of ' +
+        'today, last cash figure <cashRunwayAsOf>", not "has no cash". Rows also carry estimatedCurrentCash / ' +
+        'estimatedCashAsOf (dilution-snapshot cash projection; null = not measured) and listingMarket.',
       inputSchema: z.object({
         maxMonths: z.number().min(1).max(120).optional().describe(
           'Maximum months of cash runway to filter by (default: 6)',
+        ),
+        includeExhausted: z.boolean().optional().describe(
+          'Include companies whose estimated cash is already exhausted (default: true)',
+        ),
+        market: z.enum(['exchange', 'otc']).optional().describe(
+          'Listing market: "otc" (OTC Markets) or "exchange" (NASDAQ / NYSE / NYSE American / Arca / Cboe)',
         ),
         industry: z.string().optional().describe(
           'Filter by company industry (exact match, e.g. "Biotechnology", "Software")',
@@ -127,12 +139,16 @@ export function registerCashPositionTools(server: McpServer, client: Signal8ApiC
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ maxMonths, industry, limit, offset }) => {
+    async ({ maxMonths, includeExhausted, market, industry, limit, offset }) => {
       const params: Record<string, string> = {
         maxCashRunway: String(maxMonths ?? 6),
         sortBy: 'cash_runway_months',
         sortOrder: 'asc',
       };
+      // A company that has run out sits below every ceiling; leaving it out
+      // drops the most urgent rows exactly when they become most urgent.
+      if (includeExhausted !== false) params.includeRunwayExhausted = 'true';
+      if (market !== undefined) params.market = market;
       if (industry !== undefined) params.industry = industry;
       if (limit !== undefined) params.limit = String(limit);
       if (offset !== undefined) params.offset = String(offset);
@@ -246,7 +262,10 @@ export function registerCashPositionTools(server: McpServer, client: Signal8ApiC
         'lockup expiration calendars but for cash depletion events. Returns companies sorted ' +
         'by urgency (lowest runway first). Runway is an estimate based on current burn rate — ' +
         'actual depletion depends on future capital raises and operational changes. Default ' +
-        'window is today to 90 days out.',
+        'window is today to 90 days out. When the window starts today or earlier it also lists, first, ' +
+        'companies whose ESTIMATED cash is already exhausted (cash_runway_months null, cashRunwayReason ' +
+        '"estimate_would_be_negative", cashRunwayAsOf = the date of the cash figure that was rolled forward) — ' +
+        'an estimate, never a reported zero balance.',
       inputSchema: z.object({
         from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe(
           'Start date (YYYY-MM-DD, default: today)',
@@ -257,6 +276,9 @@ export function registerCashPositionTools(server: McpServer, client: Signal8ApiC
         industry: z.string().optional().describe(
           'Filter by company industry (exact match, e.g. "Biotechnology")',
         ),
+        market: z.enum(['exchange', 'otc']).optional().describe(
+          'Listing market: "otc" (OTC Markets) or "exchange" (NASDAQ / NYSE / NYSE American / Arca / Cboe)',
+        ),
         limit: z.number().min(1).max(100).optional().describe(
           'Maximum results to return (default: 25, max: 100)',
         ),
@@ -266,7 +288,7 @@ export function registerCashPositionTools(server: McpServer, client: Signal8ApiC
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ from, to, industry, limit, offset }) => {
+    async ({ from, to, industry, market, limit, offset }) => {
       const now = new Date();
       const fromDate = from ? new Date(from) : now;
       const toDate = to ? new Date(to) : new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
@@ -278,6 +300,10 @@ export function registerCashPositionTools(server: McpServer, client: Signal8ApiC
         sortBy: 'cash_runway_months',
         sortOrder: 'asc',
       };
+      // An exhausted roll-forward has already depleted — it belongs to a
+      // window that includes today, and to no window that starts later.
+      if (fromDate.getTime() <= now.getTime()) params.includeRunwayExhausted = 'true';
+      if (market !== undefined) params.market = market;
       if (industry !== undefined) params.industry = industry;
       if (limit !== undefined) params.limit = String(limit);
       if (offset !== undefined) params.offset = String(offset);

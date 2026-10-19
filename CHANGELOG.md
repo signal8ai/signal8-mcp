@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-20
+
+### Added
+
+- **Cash-runway screens keep companies whose estimated cash is already exhausted.**
+  `screen_must_raise` includes them by default (`includeExhausted`, default true)
+  and lists them first; `get_cash_runway_calendar` includes them when the window
+  starts today or earlier; `screen_companies` takes `includeRunwayExhausted`.
+  Such rows carry `cash_runway_months: null` with `cashRunwayReason:
+  "estimate_would_be_negative"` and `cashRunwayAsOf` — an estimate rolled forward
+  from a dated balance, never a reported zero balance.
+- **`market` filter (`"otc"` / `"exchange"`)** on `screen_companies`,
+  `screen_must_raise` and `get_cash_runway_calendar`, read from listing data
+  rather than the exchange label. Rows carry `listingMarket`.
+- **Snapshot cash on screener rows and filters.** `estimatedCurrentCash` /
+  `estimatedCashAsOf` (the dilution-snapshot cash projection; null = not
+  measured), `minCash` / `maxCash` filters and an `estimated_current_cash` sort
+  on `screen_companies`.
+- **`get_news` returns AI-analysed SEC filings** (category `sec_filing`, with
+  `formType` + `accessionNumber`) alongside news and press releases.
+
+### Changed
+
+- **Float rendering rule:** `get_float`, `get_dilution_snapshot`,
+  `get_premarket_scanner` and `screen_companies` descriptions no longer ask for
+  `~` / `<=` / `>=` glyphs. A point is printed as a plain dated number; a ceiling
+  or floor is described in words as a bound. New float rungs
+  `form4_rolled_forward_estimate` and `best_estimate` are documented.
+- **`get_dilution_snapshot`: bounded totals** — a null share total may sit beside
+  `<key>Ceiling` / `<key>Floor`; report the ceiling as "at most".
+- **`get_quote`:** `sharesOutstandingEstimateKind`
+  `"stated_as_of"` (the issuer's last stated count, dated, with later issuances
+  listed in `statedAsOf.events`) and `marketCapAsOf`.
+- **`get_short_interest`:** new `shortInterestPercentReason`
+  `"float_class_scope_mismatch"`.
+
 ## [0.18.1] - 2026-10-15
 
 ### Changed
