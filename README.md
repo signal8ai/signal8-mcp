@@ -1,5 +1,12 @@
 # @signal8ai/mcp
 
+[![npm](https://img.shields.io/npm/v/@signal8ai/mcp?label=npm)](https://www.npmjs.com/package/@signal8ai/mcp)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-ai.signal8%2Fmcp-blue)](https://registry.modelcontextprotocol.io/v0/servers/ai.signal8%2Fmcp/versions)
+[![mcp.so](https://img.shields.io/badge/mcp.so-Signal8-6f42c1)](https://mcp.so/servers/signal8)
+[![Glama](https://img.shields.io/badge/Glama-Signal8-0b7285)](https://glama.ai/mcp/servers/signal8ai/signal8-mcp)
+
+<a href="https://glama.ai/mcp/servers/signal8ai/signal8-mcp"><img width="380" height="200" src="https://glama.ai/mcp/servers/signal8ai/signal8-mcp/badge" alt="Signal8 MCP server on Glama" /></a>
+
 MCP (Model Context Protocol) server for [Signal8](https://signal8.ai) -- AI-extracted SEC filing intelligence data.
 
 Gives AI agents like Claude, Cursor, and other MCP-compatible tools direct access to:
@@ -111,7 +118,7 @@ registered live. The authoritative list is what `tools/list` returns.
 | `get_news` | Latest company news headlines |
 | `get_analyst_consensus` | Analyst ratings and price targets |
 | `get_material_events` | Material corporate events (8-K filings) |
-| `get_clinical_trials` | Clinical trial pipeline (biotech/pharma) |
+| `get_clinical_trials` | Clinical trials matched to a company, each tagged `sponsorRole` (lead vs collaborator; only lead trials are its own pipeline) |
 
 ### Market — Cross-Ticker (6 tools)
 
@@ -153,7 +160,7 @@ result is not proof a filing was never made. Record-only rows (`bodyStored: fals
 | `search_filing_text` | Exhibit-level full-text search returning the matching passage (`match` exact/stemmed, `sort`, `section`, `exhibitTypes`) |
 | `lookup_accession_number` | Accession number → filing id and metadata |
 | `screen_sec_filings` | Filings across companies by sector / industry / exchange / market cap |
-| `screen_sec_filings_performance` | Price returns +1/+3/+7/+30 days after filings, with aggregates |
+| `screen_sec_filings_performance` | Price returns +1/+3/+7/+30 days after filings (numbers, percent points), with aggregates |
 
 **Full-text query syntax** (`search_sec_filings.q`, `search_filing_text.pattern`):
 unquoted words must all appear; `"quoted phrase"` for exact wording; `OR`
@@ -236,7 +243,7 @@ Use the `explain_dilution` prompt to walk a ticker's dilution picture in plain E
 | `get_banks` | Investment bank relationships from SEC filings |
 | `get_legal_counsels` | Legal counsel relationships with partner names |
 | `get_insider_transactions` | Detailed Form 4 transaction history |
-| `get_insider_cluster_buys` | Cluster buying pattern detection (3+ insiders in 14 days) |
+| `get_insider_cluster_buys` | Cluster buying detection (3+ insiders in 14 days) over a 7 / 30 / 90-day lookback, with `asOf` |
 
 ### Intelligence — Cross-Company (3 tools)
 
