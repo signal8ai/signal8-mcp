@@ -13,7 +13,7 @@ import { Signal8ApiError } from '../api-client.js';
  * The index signature is required for compatibility with the SDK's
  * CallToolResult type which uses Zod passthrough (loose) mode.
  */
-interface McpToolResult {
+export interface McpToolResult {
   [key: string]: unknown;
   content: Array<{ type: 'text'; text: string }>;
   /**
@@ -30,7 +30,8 @@ interface McpToolResult {
 /**
  * Execute a tool handler function with standardized error handling.
  *
- * On success, serializes the result as indented JSON text content.
+ * On success, serializes the result as COMPACT JSON text content (no
+ * indentation: pretty-printing cost ~30% more tokens for every LLM reader).
  * On failure, returns a structured error object as text content with
  * `isError: true` so the MCP client can distinguish errors from data.
  *
@@ -45,7 +46,7 @@ export async function toolHandler<T>(
     return {
       content: [{
         type: 'text',
-        text: JSON.stringify(data, null, 2),
+        text: JSON.stringify(data),
       }],
       structuredContent: { data },
     };

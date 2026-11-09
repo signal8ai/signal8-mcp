@@ -59,22 +59,27 @@ export function registerCashPositionTools(server: McpServer, client: Signal8ApiC
     {
       title: 'Get AI Cash Position',
       description:
-        'Get the Signal8 cash position model for a company, derived from the dilution ' +
-        'snapshot pipeline: anchor cash and anchor date, monthly burn, post-anchor capital ' +
-        'raises (with SEC filing citations), known outflows, estimated current cash and ' +
-        'runway months. Use when analyzing a company\'s current cash situation, runway, or ' +
-        'capital raise activity. ' +
-        'ALWAYS RETURNS 200 — read `available` and `reason`, never the HTTP status: coverage ' +
-        'is partial, so `available: false` with reason `snapshot_not_generated` means THIS ' +
-        'COMPANY HAS NOT BEEN ANALYSED YET, which is different from it having no cash data ' +
-        'and different from an outage (an outage is a 5xx). Never report a company as having ' +
-        'no cash or no runway on the strength of an unavailable response. ' +
-        'The `scenarios` envelope is preserved for compatibility but only `scenarios.closed` ' +
-        'is populated: `pending` and `announced` are null with reason `scenario_not_modelled` ' +
-        'because the extraction records only REALIZED cash-raising events and never models ' +
-        'speculative raises. Do not infer them from shelf or ATM capacity. ' +
-        'Included in Signal8 Pro (403 FEATURE_NOT_AVAILABLE, requiredTier "pro", without it). '+
-        'That is a tier upgrade, not an add-on purchase — the add-on is no longer sold.',
+        'Signal8 cash position model for a company, derived from the dilution snapshot pipeline: ' +
+        'anchor cash and anchor date, monthly burn, post-anchor capital raises (with SEC filing ' +
+        'citations), known outflows, estimated current cash and runway months. Returns HTTP 200 for ' +
+        'unavailable data; the `available` and `reason` fields say why. Coverage is partial: ' +
+        '`available: false` with reason `snapshot_not_generated` means this company has not been ' +
+        'analysed yet, which is different from it having no cash data and different from an outage ' +
+        '(an outage is a 5xx). An unavailable response says nothing about whether the company has ' +
+        'cash or runway. The `scenarios` envelope is kept for compatibility but only ' +
+        '`scenarios.closed` is populated: `pending` and `announced` are null with reason ' +
+        '`scenario_not_modelled`, because the extraction records only realized cash-raising events ' +
+        'and does not model speculative raises; shelf or ATM capacity is not a modelled raise. ' +
+        'Currency: amounts are in the filer\'s reporting currency, which is not always USD (Canadian, ' +
+        'European, Japanese and Chinese filers report in their own currency). Top-level `currency` is' +
+        ' ISO 4217 (null = not determined), and `currencySource: "presumed_usd"` means no ' +
+        'foreign-currency marker was found, not a measurement. Every money object is {usd, native: ' +
+        '{amount, currency}}: `usd` (and scenarios.closed.estimatedCashUsd / adjustedEstimatedCashUsd' +
+        ' / netCapitalRaisesUsd) is null when the block is not in USD, and nothing is converted, so ' +
+        '`native.amount` is in `native.currency`, not dollars. monthsOfCashLeft is currency-neutral ' +
+        'and stays populated. Included in Signal8 Pro: without it the call returns 403 ' +
+        'FEATURE_NOT_AVAILABLE with `requiredTier: "pro"` (a tier upgrade; there is no add-on to ' +
+        'buy).',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),
@@ -89,12 +94,36 @@ export function registerCashPositionTools(server: McpServer, client: Signal8ApiC
     {
       title: 'Get 10-Year Cash History',
       description:
-        'Get up to 10 years of quarterly cash position history from SEC XBRL filings ' +
-        '(data.sec.gov company-facts). Returns an array of {periodEnd, usd, formType, ' +
-        'isAnnual} sorted chronologically. Deduped by period with annual filings preferred ' +
-        'over quarterly. Not feature-gated — works for any company with SEC filings.',
+        'Up to 10 years of quarterly cash and cash equivalents for a company, as reported in its ' +
+        'SEC XBRL financial statements (data.sec.gov). Returns `history`: one point per period end ' +
+        '{periodEnd, usd, formType, isAnnual}, oldest first. When a 10-K and a 10-Q cover the same ' +
+        'date, the annual figure is kept. Works for any company that files XBRL financials with the ' +
+        'SEC. Only figures reported in US dollars are included, so a filer that reports in another ' +
+        'currency returns an empty history: an empty history means not measured, never zero cash.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+      }),
+      // Explicit schema (replaces the generic { data: unknown } injected in
+      // tools/index.ts). Shape is the /cash-position/:ticker/history envelope,
+      // verified against the live tool 2026-11-09. passthrough() at every
+      // level so an added field can never fail output validation.
+      outputSchema: z.object({
+        data: z.object({
+          success: z.boolean().optional(),
+          data: z.object({
+            cik: z.union([z.string(), z.number()]).optional()
+              .describe('SEC Central Index Key of the filer'),
+            ticker: z.string().optional(),
+            history: z.array(
+              z.object({
+                periodEnd: z.string().describe('Period-end date, YYYY-MM-DD'),
+                usd: z.number().describe('Cash and cash equivalents at period end, in US dollars'),
+                formType: z.string().optional().describe('Form the figure was read from, e.g. 10-K, 10-Q'),
+                isAnnual: z.boolean().describe('True when the figure comes from an annual report'),
+              }).passthrough(),
+            ),
+          }).passthrough(),
+        }).passthrough(),
       }),
       annotations: { readOnlyHint: true },
     },
@@ -107,16 +136,17 @@ export function registerCashPositionTools(server: McpServer, client: Signal8ApiC
     {
       title: 'Screen Companies That Must Raise Capital',
       description:
-        'Find companies with imminent capital raise needs based on estimated cash runway. ' +
-        'Defaults to companies with less than 6 months of cash remaining, sorted by urgency ' +
-        '(lowest runway first). Useful for identifying distressed companies, imminent dilution ' +
-        'situations, or potential financing catalysts. Runway is estimated from current burn rate. ' +
-        'Companies whose ESTIMATED cash is already exhausted are included by default and listed first: ' +
-        'they carry cash_runway_months null with cashRunwayReason "estimate_would_be_negative" (the last ' +
-        'cash figure, dated cashRunwayAsOf, rolled forward by the burn rate is below zero today). That is an ' +
-        'estimate from a dated balance, never a reported zero balance — say "estimated exhausted as of ' +
-        'today, last cash figure <cashRunwayAsOf>", not "has no cash". Rows also carry estimatedCurrentCash / ' +
-        'estimatedCashAsOf (dilution-snapshot cash projection; null = not measured) and listingMarket.',
+        'Companies with imminent capital raise needs based on estimated cash runway. Defaults to ' +
+        'companies with less than 6 months of cash remaining, sorted by urgency (lowest runway ' +
+        'first): distressed companies, imminent dilution situations and potential financing ' +
+        'catalysts. Runway is estimated from the current burn rate. Companies whose estimated cash is' +
+        ' already exhausted are included by default and listed first: they carry cash_runway_months ' +
+        'null with cashRunwayReason "estimate_would_be_negative" (the last cash figure, dated ' +
+        'cashRunwayAsOf, rolled forward by the burn rate is below zero today). That is an estimate ' +
+        'from a dated balance (estimated exhausted as of today, from the last cash figure as of ' +
+        'cashRunwayAsOf), not a reported zero balance and not a statement that the company has no ' +
+        'cash. Rows also carry estimatedCurrentCash / estimatedCashAsOf (dilution-snapshot cash ' +
+        'projection; null = not measured) and listingMarket.',
       inputSchema: z.object({
         maxMonths: z.number().min(1).max(120).optional().describe(
           'Maximum months of cash runway to filter by (default: 6)',
@@ -258,14 +288,14 @@ export function registerCashPositionTools(server: McpServer, client: Signal8ApiC
     {
       title: 'Get Cash Runway Depletion Calendar',
       description:
-        'Find companies projected to run out of cash within a date window. Similar to ' +
-        'lockup expiration calendars but for cash depletion events. Returns companies sorted ' +
-        'by urgency (lowest runway first). Runway is an estimate based on current burn rate — ' +
-        'actual depletion depends on future capital raises and operational changes. Default ' +
-        'window is today to 90 days out. When the window starts today or earlier it also lists, first, ' +
-        'companies whose ESTIMATED cash is already exhausted (cash_runway_months null, cashRunwayReason ' +
-        '"estimate_would_be_negative", cashRunwayAsOf = the date of the cash figure that was rolled forward) — ' +
-        'an estimate, never a reported zero balance.',
+        'Companies projected to run out of cash within a date window, a cash-depletion counterpart to' +
+        ' a lockup expiration calendar. Returns companies sorted by urgency (lowest runway first). ' +
+        'Runway is an estimate based on the current burn rate; actual depletion depends on future ' +
+        'capital raises and operational changes. The default window is today to 90 days out. When the' +
+        ' window starts today or earlier it also lists, first, companies whose estimated cash is ' +
+        'already exhausted (cash_runway_months null, cashRunwayReason "estimate_would_be_negative", ' +
+        'cashRunwayAsOf = the date of the cash figure that was rolled forward): an estimate, not a ' +
+        'reported zero balance.',
       inputSchema: z.object({
         from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe(
           'Start date (YYYY-MM-DD, default: today)',

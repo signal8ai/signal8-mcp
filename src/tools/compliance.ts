@@ -26,10 +26,13 @@ export function registerComplianceTools(server: McpServer, client: Signal8ApiCli
     {
       title: 'Get Compliance Evaluation',
       description:
-        'Get full compliance rules evaluation for a company. Runs Nasdaq/NYSE deficiency detection, ' +
-        'bid price tracking, and delinquent filing detection. Returns a comprehensive compliance ' +
-        'picture combining SEC filing data, market data, and exchange rules. This is the most ' +
-        'thorough compliance check available.',
+        'Get full compliance rules evaluation for a company: Nasdaq/NYSE deficiency detection, ' +
+        'bid price tracking, and delinquent filing detection, combining SEC filing data, market data ' +
+        'and exchange rules. Rules cover bid price, equity, reverse-split limit, market value of ' +
+        'publicly held shares, publicly held shares, holders, timely periodic filings, annual meeting ' +
+        'and audit committee, per exchange tier. Standards that could not be judged from any ' +
+        'measurement are listed in `notEvaluated`: they are neither passing nor failing. Neither a ' +
+        '`notEvaluated` standard nor the absence of a deficiency notice is evidence of compliance.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
       }),

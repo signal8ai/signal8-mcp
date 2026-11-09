@@ -72,13 +72,13 @@ describe('edgar archive tools', () => {
     const schema = tool.config.inputSchema as z.ZodObject<z.ZodRawShape>;
     expect(schema.safeParse({ pattern: 'ab', match: 'loose' }).success).toBe(false);
     expect(schema.safeParse({ pattern: 'ab', sort: 'oldest' }).success).toBe(false);
-    expect((schema.shape.match as z.ZodTypeAny).description).toMatch(/does NOT match "splits"/);
+    expect((schema.shape.match as z.ZodTypeAny).description).toMatch(/does not match "splits"/);
   });
 
   it('search_sec_filings states the company-filter rules an agent must honour', () => {
     const d = toolMap.get('search_sec_filings')!.config.description!;
     expect(d).toMatch(/issuer-filed forms/);
-    expect(d).toMatch(/EXCLUDED, never assumed/);
+    expect(d).toMatch(/excluded, never assumed/);
     expect(d).toMatch(/COMPANY_FILTER_NOT_APPLIED/);
     expect(d).toMatch(/never returns unfiltered rows/);
     expect(d).toMatch(/held range \(see `archiveFrom`/);
@@ -94,8 +94,10 @@ describe('edgar archive tools', () => {
     await tool.handler({ accessionNumber: '0001564590-23-002827' });
     expect(client.get).toHaveBeenLastCalledWith('/edgar/accession/0001564590-23-002827/documents');
     const d = tool.config.description!;
-    expect(d).toMatch(/get_exhibit_content/);
-    expect(d).toMatch(/get_filing_document/);
+    expect(d).toMatch(/`exhibitId`/);
+    expect(d).toMatch(/`filingId`/);
+    expect(d).toMatch(/`exhibitId: null`/);
+    expect(d).not.toMatch(/\b(?:get|search|lookup)_[a-z_]+/);
     expect(d).toMatch(/`stored: false`/);
   });
 
@@ -108,7 +110,7 @@ describe('edgar archive tools', () => {
     const d = tool.config.description!;
     expect(d).toMatch(/2023-01-03/);
     expect(d).toMatch(/valueUsd/);
-    expect(d).toMatch(/NULL MEANS NOT STATED/);
+    expect(d).toMatch(/null value means not stated in the filing; it does not mean zero/);
   });
 
   it('param descriptions are zod v3 (structural) so they survive into tools/list', () => {
@@ -125,7 +127,7 @@ describe('edgar archive tools', () => {
   // does not hold must never be reported as absence.
   it('every EDGAR search tool says absence before archiveFrom is not evidence', () => {
     for (const name of ['search_sec_filings', 'screen_sec_filings', 'search_filing_text']) {
-      expect(toolMap.get(name)!.config.description, name).toMatch(/ABSENCE BEFORE archiveFrom IS NOT EVIDENCE/);
+      expect(toolMap.get(name)!.config.description, name).toMatch(/absence before archiveFrom is not evidence/);
     }
     const d = toolMap.get('search_sec_filings')!.config.description!;
     expect(d).toMatch(/outside_held_range/);
@@ -158,7 +160,7 @@ describe('edgar tools — Wave 2 search syntax, facets and understanding (2026-1
     expect(schema.safeParse({ q: 'x', facets: true, understand: false }).success).toBe(true);
     expect(schema.safeParse({ facets: 'yes' }).success).toBe(false);
     expect(schema.safeParse({ understand: 'off' }).success).toBe(false);
-    expect((schema.shape.facets as z.ZodTypeAny).description).toMatch(/NOT MEASURED/);
+    expect((schema.shape.facets as z.ZodTypeAny).description).toMatch(/not measured, not zero/);
     expect((schema.shape.understand as z.ZodTypeAny).description).toMatch(/meta\.understanding/);
   });
 
@@ -226,7 +228,7 @@ describe('edgar tools — Wave 3 section search + exhibit types (2026-10-09)', (
       expect((schema.shape.section as z.ZodTypeAny).description).toMatch(/meta\.unsupported/);
       expect((schema.shape.section as z.ZodTypeAny).description).toMatch(/risk_factors.*mdna.*ex99.*item_X_YY/s);
       expect((schema.shape.exhibitTypes as z.ZodTypeAny).description).toMatch(/EX-10.*EX-99\.1/s);
-      expect((schema.shape.matchedSections as z.ZodTypeAny).description).toMatch(/never "matched nowhere"/);
+      expect((schema.shape.matchedSections as z.ZodTypeAny).description).toMatch(/not "matched nowhere"/);
       expect(schema.safeParse({ matchedSections: 'yes' }).success).toBe(false);
       expect(toolMap.get(name)!.config.description).toMatch(/meta\.sections/);
     }

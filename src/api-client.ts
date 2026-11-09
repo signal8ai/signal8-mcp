@@ -6,6 +6,8 @@
  * and typed responses.
  */
 
+import { createHash } from 'node:crypto';
+
 import { USER_AGENT } from './version.js';
 
 /**
@@ -20,15 +22,42 @@ export interface ApiClientConfig {
   baseUrl: string;
   /** API key (sk_live_xxx or sk_test_xxx) */
   apiKey: string;
+  /**
+   * MCP brand serving this request ('signal8' | 'dilutionscan' | 'splitscanner'),
+   * sent as `X-Signal8-MCP-Brand`: the backend's usage feed tells the MCP servers
+   * apart by it, and 🔴 for 'splitscanner' it is ALSO a security input: the
+   * $9.99 SplitScanner plan opens plan-gated routes only for calls that carry this
+   * label AND the Caddy loopback marker (backend `utils/internal-proxy.ts`). The
+   * value always comes from this server's own Host-to-brand map (`createApiClient`),
+   * never from an inbound header (pinned by splitscanner-label-spoof.test.ts).
+   * Omitted ⇒ no header (stdio / library use), which the backend treats as a plain
+   * API key. */
+  brand?: string;
 }
 
 export class Signal8ApiClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
+  private readonly brandHeaders: Record<string, string>;
 
   constructor(config: ApiClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, '');
     this.apiKey = config.apiKey;
+    this.brandHeaders = config.brand ? { 'X-Signal8-MCP-Brand': config.brand } : {};
+  }
+
+  /** True when a credential (API key or OAuth access token) was supplied. */
+  hasCredential(): boolean {
+    return this.apiKey.length > 0;
+  }
+
+  /**
+   * Stable, non-reversible identifier for the credential (sha256 hex), used to
+   * key per-credential caches such as the DilutionScan Pro check. Never log or
+   * cache the raw key.
+   */
+  credentialFingerprint(): string {
+    return createHash('sha256').update(this.apiKey).digest('hex');
   }
 
   /**
@@ -55,6 +84,7 @@ export class Signal8ApiClient {
         'Authorization': `Bearer ${this.apiKey}`,
         'Accept': 'application/json',
         'User-Agent': USER_AGENT,
+        ...this.brandHeaders,
       },
     });
 
@@ -79,6 +109,7 @@ export class Signal8ApiClient {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
         'User-Agent': USER_AGENT,
+        ...this.brandHeaders,
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });

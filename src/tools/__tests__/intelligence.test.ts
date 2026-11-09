@@ -3,7 +3,8 @@
  *
  * registerIntelligenceTools registers the full intelligence suite; these tests
  * assert only the 5 new institution tools: registration, readOnlyHint, CIK
- * cleaning, exact paths, and that get_institutions_discovery carries no :cik.
+ * cleaning, exact paths, and that get_institutions_leaderboards (renamed from
+ * get_institutions_discovery; same endpoint) carries no :cik.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -28,7 +29,7 @@ const NEW_TOOLS = [
   'get_institution_filings',
   'get_institution_derivatives',
   'get_institution_portfolio_analytics',
-  'get_institutions_discovery',
+  'get_institutions_leaderboards',
 ];
 
 describe('intelligence tools (task-2029 institution analytics)', () => {
@@ -95,8 +96,8 @@ describe('intelligence tools (task-2029 institution analytics)', () => {
     );
   });
 
-  it('get_institutions_discovery hits the plural path with no :cik', async () => {
-    await toolMap.get('get_institutions_discovery')!.handler({ limit: 10 });
+  it('get_institutions_leaderboards hits the plural path with no :cik', async () => {
+    await toolMap.get('get_institutions_leaderboards')!.handler({ limit: 10 });
     expect(client.get).toHaveBeenCalledWith(
       '/intelligence/institutions/discovery',
       { limit: '10' },

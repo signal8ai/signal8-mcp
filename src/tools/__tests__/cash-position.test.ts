@@ -36,14 +36,14 @@ describe('cash-position tools', () => {
     toolMap = new Map(server.tools.map((t) => [t.name, t]));
   });
 
-  it('registers all 6 cash-position tools', () => {
+  // get_burn_rate_comparison and get_offerings_since_anchor are block-commented
+  // out in cash-position.ts (QA 2026-06-15), so only these four register.
+  it('registers the 4 active cash-position tools', () => {
     expect(server.tools.map((t) => t.name).sort()).toEqual(
       [
-        'get_burn_rate_comparison',
         'get_cash_history',
         'get_cash_position',
         'get_cash_runway_calendar',
-        'get_offerings_since_anchor',
         'screen_must_raise',
       ].sort(),
     );
@@ -109,104 +109,6 @@ describe('cash-position tools', () => {
       industry: 'Biotechnology',
       limit: '10',
     });
-  });
-
-  /* ── get_burn_rate_comparison ─────────────────────────────── */
-
-  it('get_burn_rate_comparison fetches peers then cash-position for each', async () => {
-    client.get
-      .mockResolvedValueOnce({
-        data: { peers: [{ ticker: 'PEER1' }, { ticker: 'PEER2' }] },
-      })
-      .mockResolvedValueOnce({
-        data: {
-          anchor: { totalLiquid: { usd: 100_000_000 } },
-          burnRate: { monthlyBurn: { usd: -5_000_000 }, isCashPositive: false },
-          scenarios: { closed: { monthsOfCashLeft: 20, adjustedEstimatedCashUsd: 95_000_000 } },
-        },
-      })
-      .mockResolvedValueOnce({
-        data: {
-          anchor: { totalLiquid: { usd: 50_000_000 } },
-          burnRate: { monthlyBurn: { usd: -2_000_000 }, isCashPositive: false },
-          scenarios: { closed: { monthsOfCashLeft: 25, adjustedEstimatedCashUsd: 48_000_000 } },
-        },
-      })
-      .mockResolvedValueOnce({
-        data: {
-          anchor: { totalLiquid: { usd: 10_000_000 } },
-          burnRate: { monthlyBurn: { usd: -1_000_000 }, isCashPositive: false },
-          scenarios: { closed: { monthsOfCashLeft: 10, adjustedEstimatedCashUsd: 9_000_000 } },
-        },
-      });
-
-    const tool = toolMap.get('get_burn_rate_comparison')!;
-    const result = await tool.handler({ ticker: 'AIOS' });
-
-    expect(client.get).toHaveBeenCalledWith('/companies/AIOS/peers', { limit: '5' });
-    expect(client.get).toHaveBeenCalledWith('/cash-position/AIOS');
-    expect(client.get).toHaveBeenCalledWith('/cash-position/PEER1');
-    expect(client.get).toHaveBeenCalledWith('/cash-position/PEER2');
-
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.comparison).toHaveLength(3);
-    expect(parsed.comparison[0].ticker).toBe('AIOS');
-    expect(parsed.comparison[1].ticker).toBe('PEER1');
-    expect(parsed.comparison[2].ticker).toBe('PEER2');
-  });
-
-  it('get_burn_rate_comparison handles 404 gracefully', async () => {
-    client.get
-      .mockResolvedValueOnce({ data: { peers: [{ ticker: 'PEER1' }] } })
-      .mockResolvedValueOnce({
-        data: {
-          anchor: { totalLiquid: { usd: 100_000_000 } },
-          burnRate: { monthlyBurn: { usd: -5_000_000 }, isCashPositive: false },
-          scenarios: { closed: { monthsOfCashLeft: 20, adjustedEstimatedCashUsd: 95_000_000 } },
-        },
-      })
-      .mockRejectedValueOnce(new Error('Not tracked'));
-
-    const tool = toolMap.get('get_burn_rate_comparison')!;
-    const result = await tool.handler({ ticker: 'AIOS' });
-
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.comparison).toHaveLength(2);
-    expect(parsed.comparison[0].cashOnHand).toBe(95_000_000);
-    expect(parsed.comparison[1].ticker).toBe('PEER1');
-    expect(parsed.comparison[1].cashOnHand).toBeNull();
-    expect(parsed.comparison[1].error).toBe('Not tracked');
-  });
-
-  /* ── get_offerings_since_anchor ──────────────────────────── */
-
-  it('get_offerings_since_anchor extracts only offerings array', async () => {
-    const mockOfferings = [
-      { instrumentKey: 'off-1', type: 'atm', status: 'closed' },
-      { instrumentKey: 'off-2', type: 'rdo', status: 'announced' },
-    ];
-    client.get.mockResolvedValueOnce({
-      data: { offerings: mockOfferings, anchor: {}, burnRate: {}, scenarios: {} },
-    });
-
-    const tool = toolMap.get('get_offerings_since_anchor')!;
-    const result = await tool.handler({ ticker: 'AIOS' });
-
-    expect(client.get).toHaveBeenCalledWith('/cash-position/AIOS');
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.offerings).toEqual(mockOfferings);
-    expect(parsed.ticker).toBe('AIOS');
-    expect(parsed.anchor).toBeUndefined();
-  });
-
-  it('get_offerings_since_anchor returns empty array when no offerings', async () => {
-    client.get.mockResolvedValueOnce({ data: { anchor: {}, burnRate: {} } });
-
-    const tool = toolMap.get('get_offerings_since_anchor')!;
-    const result = await tool.handler({ ticker: 'TSLA' });
-
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.offerings).toEqual([]);
   });
 
   /* ── get_cash_runway_calendar ────────────────────────────── */

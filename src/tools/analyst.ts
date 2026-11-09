@@ -81,8 +81,8 @@ export function registerAnalystTools(server: McpServer, client: Signal8ApiClient
     {
       title: 'Get Analyst Coverage',
       description:
-        'Get aggregated analyst coverage for a ticker — consolidated view of grades, targets, ' +
-        'and coverage breadth across covering firms.',
+        'Get aggregated analyst coverage for a ticker: a consolidated view of grades, targets and ' +
+        'coverage breadth across covering firms.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),

@@ -30,8 +30,7 @@ export function registerCompanyTools(server: McpServer, client: Signal8ApiClient
       title: 'Search Companies',
       description:
         'Search for companies by name or ticker symbol in the Signal8 database. ' +
-        'Returns matching companies with their ticker, name, CIK, and exchange. ' +
-        'Use this as the first step to find a company before calling other tools.',
+        'Returns matching companies with their ticker, name, CIK, and exchange.',
       inputSchema: z.object({
         query: z.string().describe(
           'Search query - company name or ticker symbol (e.g., "Tesla", "TSLA")',
@@ -85,13 +84,14 @@ export function registerCompanyTools(server: McpServer, client: Signal8ApiClient
       title: 'Get Company Profile',
       description:
         'Get an enriched company profile by ticker symbol. Returns CIK, exchange, sector, ' +
-        'industry, market cap, employee count, description, and other fundamental data. ' +
-        'This is a lightweight lookup -- use this when you only need basic company info ' +
-        'rather than the full bundle. Always includes halted/haltCode/haltedAt trading-halt ' +
-        'status (false/null when trading normally); a halted-but-listed ticker reports ' +
-        'delisted:false. `sharesOutstanding` is DATED: `sharesOutstandingAsOf` + `sharesOutstandingAsOfKind` ("stated" = the ' +
+        'industry, market cap, employee count, description, and other fundamental data in a ' +
+        'lightweight response. Includes halted/haltCode/haltedAt trading-halt status on every call ' +
+        '(false/null when trading normally); a halted-but-listed ticker reports delisted:false. ' +
+        '`sharesOutstanding` is dated: `sharesOutstandingAsOf` + `sharesOutstandingAsOfKind` ("stated" = the ' +
         'issuer\'s statement date; "checked" = when it was last confirmed against a vendor; "none" = date not recorded) and a ' +
-        'vendor-free `sharesOutstandingSource`. Quote the date with the count; null is NOT MEASURED, never zero.',
+        'vendor-free `sharesOutstandingSource`. The count is only meaningful with its date. A null count means not measured; it does not mean zero. ' +
+        '`cik: null` is a foreign issuer listed on US OTC that files nothing with the SEC (e.g. PGPHF): name, exchange ' +
+        'and country come from reference data and every field Signal8 lacks is null.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
       }),

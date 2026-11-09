@@ -14,7 +14,10 @@
  * the 2 social-calendar tools landed; 102 / 109 with get_politician_disclosures, which
  * did not update this line; 104 / 111 on 2026-10-04 with get_filing_documents and
  * get_filing_structured; 107 / 114 on 2026-10-08 with the 3 Academy tools; 108 / 115
- * on 2026-10-09 with get_politician_scorecard). Derive it rather than trusting the prose:
+ * on 2026-10-09 with get_politician_scorecard; the integration test pins the runtime
+ * count and was already at 109 before get_reverse_splits_list made it 110 on
+ * 2026-11-02; get_split_performance made it 111 and get_ended_reverse_splits +
+ * get_reverse_split_authority 113 on 2026-11-03). Derive it rather than trusting the prose:
  * strip block comments from each imported tools file, count `server.registerTool(`
  * occurrences, and subtract the DISABLED_TOOLS entries.
  *
@@ -22,7 +25,8 @@
  * - Companies: search_companies, get_company_bundle, get_company_profile
  * - Company Data (Phase 2): get_quote, get_market_metrics, get_short_interest, get_float,
  *     get_financials, get_earnings, get_executives, get_peers, get_transcripts,
- *     get_news, get_analyst_consensus, get_material_events, get_clinical_trials,
+ *     get_news, get_analyst_consensus, get_material_events, get_clinical_trials (lead +
+ *     collaborator trials, tagged sponsorRole),
  *     search_clinical_trials (market-wide)
  * - Market (cross-ticker): get_quotes_batch, get_quotes_universe, get_index_snapshot,
  *     get_sector_etf_snapshot, get_top_movers, get_top_performers, get_trading_halts
@@ -67,7 +71,9 @@
  * - Policy Events (feature-2175): get_policy_events, get_policy_trade_overlap,
  *     get_policy_trade_leaderboard
  * - Premarket/RVOL (feature-2300): get_rvol_history, get_premarket_scanner
- * - Social Calendar: get_upcoming_reverse_splits, get_recent_uplistings
+ * - Social Calendar / reverse splits: get_upcoming_reverse_splits, get_recent_uplistings,
+ *     get_reverse_split_lifecycle, get_reverse_splits_list, get_ended_reverse_splits,
+ *     get_reverse_split_authority
  * - Academy (signal8.ai/learn, KEYLESS — the only tools that work without an API
  *     key): search_learn_guides, get_learn_guide, define_term
  */
@@ -75,6 +81,8 @@
 import { z } from 'zod/v3';
 import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Signal8ApiClient } from '../api-client.js';
+import { SIGNAL8_BRAND, scrubUnexposedToolReferences, type McpBrand } from '../brand.js';
+import { createProGate } from '../pro-gate.js';
 import { registerCompanyTools } from './companies.js';
 import { registerCompanyDataTools } from './company-data.js';
 import { registerMarketTools } from './market.js';
@@ -113,6 +121,9 @@ import { registerLearnTools } from './learn.js';
  *
  * @param server - McpServer instance to register tools on
  * @param client - Authenticated API client for backend calls
+ * @param brand - Product brand (brand.ts). Signal8 (default) exposes every live
+ *   tool. DilutionScan exposes only `DILUTIONSCAN_TOOLS` (the SAME
+ *   implementations, filtered here) and wraps each handler in the Pro gate.
  */
 /**
  * Generic output schema injected onto every tool (see registerAllTools).
@@ -122,12 +133,26 @@ import { registerLearnTools } from './learn.js';
  * objects. So we wrap every response as `{ data: <result> }` — `toolHandler`
  * emits `structuredContent: { data }` on success, and this schema validates it.
  * `z.unknown()` accepts any payload, so no tool call can ever fail output
- * validation. Advertising an outputSchema per tool is what the Smithery quality
- * score credits; the wrapper avoids editing all 86 registration sites.
+ * validation. Advertising an outputSchema per tool raises the Smithery quality
+ * score; the wrapper avoids editing all 86 registration sites.
  */
 const GENERIC_OUTPUT_SCHEMA = z.object({ data: z.unknown() });
 
-export function registerAllTools(server: McpServer, client: Signal8ApiClient): void {
+/** Tools whose answer can come from a live external system. Keep this list honest: openWorldHint false is a claim to OpenAI's reviewers. */
+// get_cash_history and get_dilution_history read data.sec.gov company-concept
+// live on a cache miss (cash-position.ts, dilution-history-service.ts). OpenAI's
+// scan flagged get_dilution_history for claiming false (2026-11-09).
+const OPEN_WORLD_TOOLS: ReadonlySet<string> = new Set([
+  'lookup_accession_number',
+  'get_cash_history',
+  'get_dilution_history',
+]);
+
+export function registerAllTools(
+  server: McpServer,
+  client: Signal8ApiClient,
+  brand: McpBrand = SIGNAL8_BRAND,
+): void {
   // ---------------------------------------------------------------------------
   // Per-tool disables (QA 2026-06-16). Commented out until their data / upstream
   // issues are resolved. Re-enable by deleting the entry. Done centrally (not by
@@ -152,6 +177,8 @@ export function registerAllTools(server: McpServer, client: Signal8ApiClient): v
     'get_bill_impact',
     'get_politician_upcoming_bills',
   ]);
+  const allowed = brand.toolAllowlist ? new Set<string>(brand.toolAllowlist) : null;
+  const proGate = brand.requirePro ? createProGate(client, brand) : null;
   const originalRegisterTool = server.registerTool.bind(server) as (
     name: string,
     ...rest: unknown[]
@@ -161,12 +188,66 @@ export function registerAllTools(server: McpServer, client: Signal8ApiClient): v
     ...rest: unknown[]
   ): unknown => {
     if (DISABLED_TOOLS.has(name)) return undefined;
+    // Brand allowlist (DilutionScan exposes a curated subset). Selection only:
+    // the tool's implementation is the Signal8 one, untouched.
+    if (allowed && !allowed.has(name)) return undefined;
     // Inject the generic outputSchema into the tool config (rest[0]) unless the
     // tool already declares one, so every exposed tool advertises an output
     // schema without touching 86 registration sites.
     const [config, ...others] = rest;
+    // Curated brands: a description must not point at a tool this brand does
+    // not register (see scrubUnexposedToolReferences). Since 2026-11-05 no
+    // description names another tool at all (description-policy.test.ts), so
+    // this is a backstop; cross-tool workflow lives in the brand instructions.
+    if (allowed && config && typeof config === 'object') {
+      const c = config as Record<string, unknown>;
+      if (typeof c.description === 'string') {
+        c.description = scrubUnexposedToolReferences(c.description, allowed);
+      }
+    }
+    // Mirror the tool's display title into annotations.title. The MCP spec
+    // reads a display name from either place, but the Claude connector
+    // directory checks annotations.title and flagged every tool without it
+    // (2026-11-04). One place here instead of ~110 registration sites.
+    if (config && typeof config === 'object') {
+      const c = config as { title?: unknown; annotations?: Record<string, unknown> };
+      if (typeof c.title === 'string' && c.title.length > 0) {
+        c.annotations = { ...(c.annotations ?? {}) };
+        if (typeof c.annotations.title !== 'string') c.annotations.title = c.title;
+      }
+    }
+    // OpenAI's plugin portal requires all three behaviour hints on every tool.
+    // The MCP defaults are the WRONG way round for us (openWorldHint defaults
+    // to true), so state them: every tool here is a read of Signal8's own
+    // closed data service. Only a read-only tool is touched; a tool that ever
+    // declares readOnlyHint false must set its own hints.
+    if (config && typeof config === 'object') {
+      const c = config as { annotations?: Record<string, unknown> };
+      if (c.annotations?.readOnlyHint === true) {
+        if (typeof c.annotations.destructiveHint !== 'boolean') c.annotations.destructiveHint = false;
+        // A tool that can reach a system we do not control is open-world.
+        // OpenAI's scan flagged lookup_accession_number: when a filing is not
+        // in Signal8's archive it answers from SEC EDGAR live.
+        if (typeof c.annotations.openWorldHint !== 'boolean') c.annotations.openWorldHint = OPEN_WORLD_TOOLS.has(name);
+      }
+    }
     if (config && typeof config === 'object' && !('outputSchema' in config)) {
       (config as Record<string, unknown>).outputSchema = GENERIC_OUTPUT_SCHEMA;
+    }
+    // Pro gate (requirePro brands): the handler is the LAST argument. Check the
+    // entitlement before it runs and answer with the denial instead. A denial
+    // carries `isError` and no structuredContent, so the output schema does
+    // not apply to it.
+    if (proGate) {
+      const handler = others[others.length - 1];
+      if (typeof handler === 'function') {
+        const gate = proGate;
+        others[others.length - 1] = async (...args: unknown[]): Promise<unknown> => {
+          const denied = await gate();
+          if (denied) return denied;
+          return (handler as (...a: unknown[]) => unknown)(...args);
+        };
+      }
     }
     return originalRegisterTool(name, config, ...others);
   };
@@ -181,7 +262,7 @@ export function registerAllTools(server: McpServer, client: Signal8ApiClient): v
   registerIntelligenceTools(server, client);  // 15 intelligence tools (Phase 1 + 3 + 4 cross-company)
   registerComplianceTools(server, client);    // get_compliance, get_deficiencies, get_compliance_alerts, get_listing_classification
   registerScreenerTools(server, client);      // screen_companies, get_premarket_scan_history (feature-2300)
-  registerEventsAndAtmTools(server, client);  // get_events, get_atm_activity, get_split_history
+  registerEventsAndAtmTools(server, client);  // get_events, get_atm_activity, get_split_history, get_split_performance
   registerEtfTools(server, client);           // get_etf_bundle
   registerPoliticianTools(server, client);   // 20 politician trading tools (STOCK Act + committees + bills + votes + P&L + discovery)
   registerCashPositionTools(server, client); // 6 cash position & runway tools
@@ -196,6 +277,6 @@ export function registerAllTools(server: McpServer, client: Signal8ApiClient): v
   registerPolicyTools(server, client);           // 3 policy-event overlap tools (feature-2175): EO list + per-politician overlap + leaderboard
   registerFloorIntelligenceTools(server, client); // 3 floor-intelligence tools: legislative catalyst calendar + bill impact + per-politician upcoming bills
   registerPremarketTools(server, client);        // 2 premarket/RVOL tools (feature-2300): get_rvol_history, get_premarket_scanner
-  registerSocialCalendarTools(server, client);   // 2 social-calendar tools: get_upcoming_reverse_splits, get_recent_uplistings
+  registerSocialCalendarTools(server, client);   // 6 social-calendar / reverse-split tools: get_upcoming_reverse_splits, get_recent_uplistings, get_reverse_split_lifecycle, get_reverse_splits_list, get_ended_reverse_splits, get_reverse_split_authority
   registerLearnTools(server, client);            // 3 Academy tools (keyless): search_learn_guides, get_learn_guide, define_term
 }

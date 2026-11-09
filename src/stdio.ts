@@ -37,28 +37,33 @@
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createApiClient } from './auth.js';
+import { resolveBrand } from './brand.js';
 import { createMcpServer } from './server.js';
 
 async function main(): Promise<void> {
+  // MCP_BRAND=dilutionscan serves the DilutionScan tool set behind the Pro
+  // gate (brand.ts). An unknown value throws before anything starts.
+  const brand = resolveBrand();
+
   // Do NOT throw when the key is missing: start in discovery-only mode so
   // `tools/list` works without a credential (tool calls fail closed at the
   // backend with 401). Warn on stderr — stdout is reserved for MCP messages.
   const apiKey = process.env.SIGNAL8_API_KEY ?? '';
   if (!apiKey) {
     process.stderr.write(
-      'Signal8 MCP: SIGNAL8_API_KEY is not set — starting in discovery-only mode ' +
+      `${brand.displayName}: SIGNAL8_API_KEY is not set — starting in discovery-only mode ` +
         '(tool calls require a key). Get one (Signal8 Pro) at https://signal8.ai/developer/api-keys\n',
     );
   }
 
   const client = createApiClient(apiKey);
-  const server = createMcpServer(client);
+  const server = createMcpServer(client, brand);
   const transport = new StdioServerTransport();
 
   await server.connect(transport);
 
   // Log startup to stderr (stdout is reserved for MCP protocol messages)
-  process.stderr.write('Signal8 MCP server started (stdio transport)\n');
+  process.stderr.write(`${brand.displayName} server started (stdio transport)\n`);
 
   // Handle graceful shutdown
   process.on('SIGINT', async () => {

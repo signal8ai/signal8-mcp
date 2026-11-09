@@ -111,11 +111,16 @@ const EXPECTED_TOOLS = [
   'get_recent_congressional_votes',
   'get_recent_material_filings',
   'get_recent_uplistings',
+  'get_reverse_split_lifecycle',
+  'get_reverse_splits_list',
+  'get_ended_reverse_splits',
+  'get_reverse_split_authority',
   'get_recently_sponsored_bills',
   'get_rvol_history',
   'get_senate_trades_by_ticker',
   'get_short_interest',
   'get_split_history',
+  'get_split_performance',
   'get_stock_price_change',
   'get_top_movers',
   'get_trading_halts',
@@ -172,8 +177,8 @@ beforeAll(() => {
 /* ── Tool registration ────────────────────────────────────────────── */
 
 describe('tool registration', () => {
-  it('registers exactly 108 tools', () => {
-    expect(server.tools).toHaveLength(108);
+  it('registers exactly 113 tools', () => {
+    expect(server.tools).toHaveLength(113);
   });
 
   it.each(EXPECTED_TOOLS)('registers tool: %s', (name) => {

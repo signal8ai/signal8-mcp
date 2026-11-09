@@ -55,18 +55,17 @@ export function registerLearnTools(server: McpServer, client: Signal8ApiClient):
     {
       title: 'Search Signal8 Academy Guides',
       description:
-        'Search the free Signal8 Academy (signal8.ai/learn) — plain-English guides that explain ' +
-        'dilution (ATMs, warrants, convertibles, baby shelf, cash runway), how to read SEC filings ' +
-        '(8-K items, Form 4 codes, 13D/13G, 424B5, S-1/S-3), market structure (halts, short interest, ' +
-        'float, reverse splits, STOCK Act disclosures) and how to use Signal8. Returns matching guides ' +
-        'with title, description, track, section, reading time, lastVerified date, the public url and ' +
-        'the signal8:// resource uri — no bodies; call get_learn_guide for the full Markdown. ' +
-        'Keyword match: every query word must appear somewhere in the guide; title hits rank highest. ' +
-        'An empty query lists every guide (optionally one track) in reading order. ' +
-        'Use this to ground an explanation of a concept the user asked about, or to cite a guide ' +
-        'alongside data from the dilution / filing tools. Works without an API key. ' +
-        'An empty result means no guide matched the words given — try fewer or broader words ' +
-        '(e.g. "warrant" rather than "warrant inducement repricing") — not that the topic is unimportant.',
+        'Free: works without an API key or Pro plan (the hosted server only needs a signed-in ' +
+        'account). Searches the Signal8 Academy (signal8.ai/learn): plain-English guides that explain' +
+        ' dilution (ATMs, warrants, convertibles, baby shelf, cash runway), how to read SEC filings ' +
+        '(8-K items, Form 4 codes, 13D/13G, 424B5, S-1/S-3), market structure (halts, short interest,' +
+        ' float, reverse splits, STOCK Act disclosures) and how Signal8 works. Returns matching ' +
+        'guides with title, description, track, section, reading time, lastVerified date, the public ' +
+        'url and the signal8:// resource uri, without bodies. Keyword match: every query word must ' +
+        'appear somewhere in the guide; title hits rank highest. An empty query lists every guide ' +
+        '(optionally one track) in reading order. An empty result means no guide matched the words ' +
+        'given (fewer or broader words match more guides, e.g. "warrant" rather than "warrant ' +
+        'inducement repricing"), not that the topic is unimportant.',
       inputSchema: z.object({
         query: z
           .string()
@@ -103,13 +102,14 @@ export function registerLearnTools(server: McpServer, client: Signal8ApiClient):
     {
       title: 'Get Signal8 Academy Guide',
       description:
-        'Get one Signal8 Academy guide as Markdown, by track and slug (both come from ' +
-        'search_learn_guides, or from a signal8.ai/learn/<track>/<slug> URL). Returns title, ' +
-        'description, section, lastVerified, the public url, the full Markdown body (links already ' +
-        'rewritten to absolute signal8.ai URLs), the related guides, the glossary terms it uses ' +
-        '(with one-line definitions) and its SEC sources (accession numbers). Guides use hypothetical ' +
-        'examples ("Company X") unless a source is cited; they are education, not advice about any ' +
-        'named company. When you quote or paraphrase a guide, cite its url. Works without an API key.',
+        'Free: works without an API key or Pro plan (the hosted server only needs a signed-in ' +
+        'account). One Signal8 Academy guide as Markdown, by track and slug (as returned by the ' +
+        'Academy search, or from a signal8.ai/learn/<track>/<slug> URL). Returns title, description, ' +
+        'section, lastVerified, the public url, the full Markdown body (links already rewritten to ' +
+        'absolute signal8.ai URLs), the related guides, the glossary terms it uses (with one-line ' +
+        'definitions) and its SEC sources (accession numbers). Guides use hypothetical examples ' +
+        '("Company X") unless a source is cited; they are education, not advice about any named ' +
+        'company, and each guide\'s url is its citable source.',
       inputSchema: z.object({
         track: z.enum(LEARN_TRACK_SLUGS).describe(TRACK_DESCRIPTION),
         slug: z
@@ -131,14 +131,15 @@ export function registerLearnTools(server: McpServer, client: Signal8ApiClient):
     {
       title: 'Define a Market / SEC Term',
       description:
-        'Look up a term in the Signal8 Academy glossary (signal8.ai/learn/glossary) — dilution, SEC ' +
-        'filing and trading jargon such as "ATM offering", "baby shelf", "full ratchet", ' +
-        '"pre-funded warrant", "going concern", "LULD", "days to cover", "Form 25". Accepts a glossary ' +
-        'slug ("atm-offering"), the term itself, or a common alias ("ATM", "price reset"); matching is ' +
-        'case- and punctuation-insensitive. Returns the term, a one-line short definition, the long ' +
-        'definition as Markdown, related terms, the Academy guides that use it, and the public url. ' +
-        'A TERM_NOT_FOUND error means the glossary has no entry for that wording — not that the ' +
-        'concept does not exist; try search_learn_guides with the same words. Works without an API key.',
+        'Free: works without an API key or Pro plan (the hosted server only needs a signed-in ' +
+        'account). Looks up a term in the Signal8 Academy glossary (signal8.ai/learn/glossary): ' +
+        'dilution, SEC filing and trading jargon such as "ATM offering", "baby shelf", "full ' +
+        'ratchet", "pre-funded warrant", "going concern", "LULD", "days to cover", "Form 25". Accepts' +
+        ' a glossary slug ("atm-offering"), the term itself, or a common alias ("ATM", "price ' +
+        'reset"); matching is case- and punctuation-insensitive. Returns the term, a one-line short ' +
+        'definition, the long definition as Markdown, related terms, the Academy guides that use it, ' +
+        'and the public url. A TERM_NOT_FOUND error means the glossary has no entry for that wording,' +
+        ' not that the concept does not exist; the Academy guide search may still cover it.',
       inputSchema: z.object({
         term: z
           .string()

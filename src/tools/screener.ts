@@ -51,32 +51,30 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
     {
       title: 'Screen Companies',
       description:
-        'Since 2026-10-03 the float column ALWAYS carries the dilution snapshot\'s own figure when the snapshot has one: ' +
-        '"float" is the measured POINT float (null on a withheld snapshot row), and such a row then carries ' +
-        '"floatEstimate" (shares) + "floatEstimateBound" ("point" / "ceiling" / "floor") + "floatEstimateBasis" ' +
-        '(the working). RENDERING (2026-10-18): a "point" is the plain number with its basis as the caveat; a "ceiling" / ' +
-        '"floor" is a BOUND, not a figure — write "float not stated (at most / at least 7,953,957)", never the bare number ' +
-        'and never a "~" / "<=" / ">=" glyph. minFloat / maxFloat and the ' +
-        'computed_float sort compare the figure\'s VALUE (COALESCE of the two), so a bounded row is kept; a row with ' +
-        'neither is NOT MEASURED, never 0. 🔴 Never feed floatEstimate into a market cap, a percent-of-float or a ' +
-        'short-interest ratio — a bound is not a point. ' +
-        'Screen companies by price range, volume, cash runway, float, shares outstanding (each row\'s `shares_outstanding` is DATED by `sharesOutstandingAsOf` + `sharesOutstandingAsOfKind` (stated / checked / none = date not recorded) and a vendor-free `sharesOutstandingSource`; never present the count without its date), ' +
-        'market cap, industry, listing exchange (NASDAQ/NYSE/AMEX), listing market (market="otc" / "exchange" — the ' +
-        'reliable OTC test; the exchange label is inconsistent on OTC rows), float data source, TTM dividend yield and ' +
-        'snapshot cash (minCash / maxCash). ' +
-        'CASH RUNWAY: a null cash_runway_months carries cashRunwayReason saying why. "estimate_would_be_negative" means ' +
-        'the last cash figure rolled forward by the burn rate is below zero today — ESTIMATED exhausted, not a reported ' +
-        'zero balance (cashRunwayAsOf is the cash figure\'s date). Such rows have no months, so maxCashRunway drops ' +
-        'them unless includeRunwayExhausted=true. Any other reason, or a null reason, is NOT a runway claim. ' +
-        'CASH: estimatedCurrentCash (with estimatedCashAsOf) is the dilution snapshot\'s cash PROJECTION in USD, ' +
-        'present only for snapshot-covered companies — null means NOT MEASURED, never "no cash", and minCash / maxCash ' +
-        'can only return covered companies. Each row also carries listingMarket ("exchange" / "otc", null = unknown). ' +
-        'Each row carries dividendYield (trailing-twelve-month cash dividends with an ex-date in the last 365 days ' +
-        '/ current price, in percent), nextExDate and lastExDate — null means NOT MEASURED or not a payer, never 0%. ' +
-        'Sort results by any sortable column. ' +
-        'Returns matching companies with key metrics and pagination. Each row carries live ' +
-        'trading-halt status (halted/haltCode/haltedAt; false/null when trading normally); ' +
-        'pass excludeHalted=true to drop currently-halted tickers from the results.',
+        'Screen companies by price range, volume, cash runway, float, shares outstanding, market cap, ' +
+        'industry, listing exchange (NASDAQ/NYSE/AMEX), listing market (market="otc" / "exchange"; the ' +
+        'reliable OTC test, as the exchange label is inconsistent on OTC rows), float data source, TTM ' +
+        'dividend yield and snapshot cash (minCash / maxCash). Sortable by any sortable column. Returns ' +
+        'matching companies with key metrics and pagination. Float: "float" is the measured point float ' +
+        '(null on a withheld dilution-snapshot row, which then carries "floatEstimate" + ' +
+        '"floatEstimateBound" ("point" / "ceiling" / "floor") + "floatEstimateBasis"). A point estimate ' +
+        'is a number with its basis as the caveat; a ceiling or floor is a bound, not a figure: the float ' +
+        'is not stated and is at most (ceiling) or at least (floor) that number. floatEstimate is not a ' +
+        'basis for a market cap, percent-of-float or short-interest ratio. minFloat / maxFloat and the ' +
+        'computed_float sort use the figure\'s value, so a bounded row is kept; a row with neither is not ' +
+        'measured, not 0. `shares_outstanding` is dated by `sharesOutstandingAsOf` + ' +
+        '`sharesOutstandingAsOfKind` (stated / checked / none = date not recorded) and ' +
+        '`sharesOutstandingSource`; the count is only meaningful with its date. Cash runway: a null ' +
+        'cash_runway_months carries cashRunwayReason. "estimate_would_be_negative" = the last cash ' +
+        'figure (dated cashRunwayAsOf) rolled forward by burn is below zero: estimated exhausted, not a ' +
+        'reported zero balance; maxCashRunway drops such rows unless includeRunwayExhausted=true. Any ' +
+        'other or null reason is not a runway claim. estimatedCurrentCash (estimatedCashAsOf) is the ' +
+        'snapshot\'s USD cash projection, only for snapshot-covered companies: null = not measured, not ' +
+        '"no cash"; a non-USD filer has it null and is never matched by minCash / maxCash. dividendYield ' +
+        '(TTM cash dividends with an ex-date in the last 365 days / current price, %), nextExDate, ' +
+        'lastExDate: null = not measured or not a payer, not 0%. listingMarket: "exchange" / "otc", ' +
+        'null = unknown. Each row carries live trading-halt status (halted/haltCode/haltedAt; false/null ' +
+        'when trading normally); excludeHalted=true drops currently-halted tickers.',
       inputSchema: z.object({
         // Text / enum filters
         country: z.enum(['US', 'CA', 'all']).optional().describe(
@@ -86,7 +84,8 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
           'Filter by company industry (exact match, e.g. "Biotechnology", "Software")',
         ),
         exchange: z.string().optional().describe(
-          'Filter by listing exchange (exact match): NASDAQ, NYSE, or AMEX. For OTC use market="otc" instead',
+          'Filter by listing exchange: NASDAQ (every tier), NYSE (includes NYSE Arca), or AMEX (NYSE American). ' +
+          'Each matches every spelling of that exchange; names that moved to OTC never match. For OTC use market="otc" instead',
         ),
         market: z.enum(['exchange', 'otc']).optional().describe(
           'Listing market: "otc" (OTC Markets) or "exchange" (NASDAQ / NYSE / NYSE American / Arca / Cboe). ' +
@@ -124,10 +123,11 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
 
         // Snapshot cash (USD)
         minCash: z.number().min(0).optional().describe(
-          'Minimum dilution-snapshot cash projection in USD (estimatedCurrentCash). Snapshot-covered companies only',
+          'Minimum dilution-snapshot cash projection in USD (estimatedCurrentCash). Snapshot-covered companies ' +
+          'reporting in USD only',
         ),
         maxCash: z.number().min(0).optional().describe(
-          'Maximum dilution-snapshot cash projection in USD (estimatedCurrentCash). Snapshot-covered companies only — ' +
+          'Maximum dilution-snapshot cash projection in USD (estimatedCurrentCash). Snapshot-covered companies only; ' +
           'an uncovered company is not measured, not excluded for having cash',
         ),
 
@@ -193,7 +193,7 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
         // params so the in-flight `country` addition is untouched.
         excludeHalted: z.boolean().optional().describe(
           'When true, exclude tickers with a currently-active trading halt ' +
-          '(regulatory or volatility) from the results. Default false — halted ' +
+          '(regulatory or volatility) from the results. Default false: halted ' +
           'rows are included and carry halted/haltCode/haltedAt fields.',
         ),
       }),
@@ -226,37 +226,28 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
     {
       title: 'Get Premarket Scan History',
       description:
-        'Historical MARKET-WIDE premarket scan for a single PAST trade date. For the ' +
-        'requested ET date, returns every ticker with that day\'s premarket (default) ' +
-        'session volume and its relative volume (RVOL) vs the trailing 30-day same-session ' +
-        'baseline — the SAME RVOL math as get_rvol_history, but across the whole market for ' +
-        'one date instead of one ticker across many dates. Filter by RVOL, market cap, ' +
-        'price, and float to backtest screens like "sub-$500M tickers with premarket ' +
-        'RVOL > 5 on 2026-07-20" in one call. Rows are ranked by RVOL descending. A future ' +
-        'or non-trading date returns an empty list with an explanatory reason (not an ' +
-        'error). Every row also reports "baselineState" (why its RVOL is or is not null), ' +
-        '"advRatio" (volume ÷ trailing 30-session average FULL-DAY volume) and "advDays"; set ' +
-        'includeNoHistory=true to surface high-volume tickers that have no computable RVOL at ' +
-        'all, such as first-session new listings. Each row ALSO publishes the RVOL denominator ' +
-        'itself as "baselineVolume" (shares) plus a "baselineThin" flag (true when that ' +
-        'denominator is under 200 shares): a 90x RVOL off a 1-share baseline is arithmetically ' +
-        'correct and analytically worthless. That is almost entirely an asOfTime-basis effect ' +
-        '(0.1% of full-session rows vs ~38% at the 04:30 cutoff, falling to ~9% by 09:15) and it ' +
-        'skews to LIQUID LARGE CAPS that simply do not trade early, NOT to microcaps. Screen it ' +
-        'out with minBaselineVolume and/or minSessionVolume. The response "meta" also reports ' +
-        'asOfApplied / asOfIgnored / asOfIgnoredReason, so a time-of-day request that could not ' +
-        'be honoured is visible instead of quietly returning full-session numbers. ' +
-        'A price / market-cap / float filter can only be applied to a ticker company_screener_data ' +
-        'holds a value for, so a just-renamed or just-listed symbol cannot be rated against it. ' +
-        'Those rows are NEVER silently dropped: "meta.unscreened" always reports their count, the ' +
-        'filter families involved and the tickers, and includeUnscreened=true returns them in ' +
-        '"rows" tagged with "unscreenedFilters". Treat that tag as NOT MEASURED — the value is ' +
-        'unknown, not out of range. Charged per your API tier.',
+        'Historical market-wide premarket scan for one past ET trade date: every ticker with that day\'s ' +
+        'premarket (default) session volume and its RVOL vs the trailing 30-day same-session baseline ' +
+        '(the same per-ticker RVOL math, across the market for one date). Filters on RVOL, market cap, ' +
+        'price and float support backtesting screens like "sub-$500M tickers with premarket RVOL > 5 on ' +
+        '2026-07-20"; rows ranked by RVOL descending. A future or non-trading date returns an empty list ' +
+        'with a reason (not an error). Each row reports "baselineState" (why its RVOL is or is not null), ' +
+        '"advRatio" (volume / trailing 30-session average full-day volume), "advDays", and the RVOL ' +
+        'denominator "baselineVolume" with "baselineThin" (true under 200 shares): a 90x RVOL off a ' +
+        '1-share baseline is arithmetically correct and analytically meaningless, mostly an early-asOfTime ' +
+        'effect on liquid large caps; minBaselineVolume / minSessionVolume exclude such rows. ' +
+        'includeNoHistory=true surfaces high-volume tickers with no computable RVOL (e.g. first-session ' +
+        'listings). meta reports asOfApplied / asOfIgnored / asOfIgnoredReason, so an unhonoured ' +
+        'time-of-day request is visible. Tickers with no screener value for a price / market-cap / float ' +
+        'filter (just renamed or listed) are not silently dropped: "meta.unscreened" reports their ' +
+        'count, filter families and tickers, and includeUnscreened=true returns them tagged ' +
+        '"unscreenedFilters"; that tag means the filter was not measured for the ticker, not that it is ' +
+        'out of range.',
       inputSchema: z.object({
         date: z
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be formatted YYYY-MM-DD')
-          .describe('REQUIRED past ET trade date to scan (YYYY-MM-DD). Future/non-trade dates return an empty list.'),
+          .describe('Required past ET trade date to scan (YYYY-MM-DD). Future/non-trade dates return an empty list.'),
         session: z
           .enum(['premarket', 'regular', 'afterhours', 'all'])
           .optional()
@@ -270,15 +261,15 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
           .optional()
           .describe(
             'Also return the cohort minRvol structurally hides: tickers with NO computable ' +
-              'RVOL. Two kinds, told apart by each row\'s "baselineState" — "no-history" (a new ' +
+              'RVOL. Two kinds, told apart by each row\'s "baselineState": "no-history" (a new ' +
               'listing with no prior trading history at all, so RVOL is meaningless rather than ' +
               'merely missing; e.g. a stock that printed 20M shares on its first-ever session) ' +
               'and "no-cutoff-history" (an established ticker that simply never traded at this ' +
-              'cutoff before — a genuine wake-up). Both come back with rvol=null and are ALWAYS ' +
-              'ranked BELOW every real-RVOL row, ordered among themselves by "advRatio". Use ' +
-              '"advRatio" (volume ÷ trailing 30-session average FULL-DAY volume, null when no ' +
-              'full-day denominator exists) and "advDays" (its sample size) to size them — it is ' +
-              'NOT an RVOL and is not comparable to one. Inert unless minRvol is set. Default false.',
+              'cutoff before, a genuine wake-up). Both come back with rvol=null and are always ' +
+              'ranked below every real-RVOL row, ordered among themselves by "advRatio". ' +
+              '"advRatio" (volume / trailing 30-session average full-day volume, null when no ' +
+              'full-day denominator exists) and "advDays" (its sample size) size them; advRatio is ' +
+              'not an RVOL and is not comparable to one. Inert unless minRvol is set. Default false.',
           ),
         minMarketCap: z
           .number()
@@ -295,19 +286,18 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
             'Minimum RVOL DENOMINATOR in shares. Drops rows whose "baselineVolume" is below ' +
               'it, plus every row that has no baseline at all. This is the direct fix for a ' +
               'huge RVOL computed against a near-zero baseline (e.g. 102 shares ÷ a 1.2-share ' +
-              'baseline = 87x on a $10B company that just does not trade at 04:30). Try 200 to ' +
-              'match the "baselineThin" flag, or higher for a stricter screen. Does NOT change ' +
-              'any RVOL — it only removes rows. Note it also excludes the includeNoHistory ' +
+              'baseline = 87x on a $10B company that just does not trade at 04:30). 200 matches ' +
+              'the "baselineThin" flag; higher is stricter. It changes no RVOL; it only removes ' +
+              'rows. It also excludes the includeNoHistory ' +
               'cohort, which by definition has no denominator.',
           ),
         minSessionVolume: z
           .number()
           .optional()
           .describe(
-            'Minimum RVOL NUMERATOR in shares — the scanned session\'s own volume. Answers ' +
-              '"did enough actually trade to be worth acting on?", where minBaselineVolume ' +
-              'answers "is the comparison meaningful at all?". USE BOTH IF YOU MEAN BOTH: ' +
-              'neither subsumes the other (a 1,000-share floor here cuts thin-baseline rows ' +
+            'Minimum RVOL numerator in shares: the scanned session\'s own volume. It measures ' +
+              'whether enough actually traded, where minBaselineVolume measures whether the ' +
+              'comparison is meaningful at all; neither subsumes the other (a 1,000-share floor here cuts thin-baseline rows ' +
               'from ~26% to ~3%, yet a name with an 860-share baseline and 11.8M shares traded ' +
               'passes this and fails a baseline floor).',
           ),
@@ -320,12 +310,12 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
           .optional()
           .describe(
             'Also return rows that could not be RATED against the price / market-cap / float ' +
-              'bounds above, because company_screener_data holds no value for them — typically ' +
-              'a symbol renamed or listed within the last day (the source is a vendor screener ' +
+              'bounds above, because company_screener_data holds no value for them (typically ' +
+              'a symbol renamed or listed within the last day; the source is a vendor screener ' +
               'that lags a rename by ~a day). Each such row carries "unscreenedFilters" naming ' +
               'the families that could not be applied, and the matching value field is null. ' +
-              'READ THAT AS NOT MEASURED — never as "matched" or "did not match". Default ' +
-              'false, in which case those rows are excluded from "rows" but are STILL reported ' +
+              'That means not measured, neither "matched" nor "did not match". Default ' +
+              'false, in which case those rows are excluded from "rows" but are still reported ' +
               'in meta.unscreened (count / columns / tickers), so they are never silently ' +
               'dropped. Inert unless a price, market-cap or float filter is supplied.',
           ),
@@ -342,24 +332,24 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
           .regex(/^\d{2}:\d{2}$/, 'asOfTime must be HH:MM (24h ET)')
           .optional()
           .describe(
-            'Optional TRUE time-of-day premarket basis. Any HH:MM ET premarket time; ' +
+            'Optional true time-of-day premarket basis. Any HH:MM ET premarket time; ' +
               'snapped to the nearest 15-minute grid cutoff (04:00–09:15, ties resolve to ' +
               'the earlier cutoff). When set, RVOL is cumulative premarket volume known BY ' +
-              'that cutoff ÷ the trailing baselineDays (default 30) average of the SAME cutoff — a real time-of-day ' +
+              'that cutoff ÷ the trailing baselineDays (default 30) average of the same cutoff: a real time-of-day ' +
               'comparison, not the full 04:00–09:30 session. Each returned row carries a ' +
               '"basis" field: "asof-0700" (the snapped cutoff actually used) when a ' +
-              'precomputed row exists, else "full-session" (automatic per-row fallback — ' +
+              'precomputed row exists, else "full-session" (automatic per-row fallback; ' +
               'the as-of series is forward-looking and may be sparse). Only applies to a ' +
-              'premarket scan. Omit for full-session premarket volume. ' +
-              'CHECK "meta.asOfApplied" (the SNAPPED cutoff actually used, or null) and ' +
-              '"meta.asOfIgnored" / "meta.asOfIgnoredReason" ("date-not-covered" — the as-of ' +
+              'premarket scan. Unset means full-session premarket volume. ' +
+              '"meta.asOfApplied" is the snapped cutoff actually used, or null, and ' +
+              '"meta.asOfIgnored" / "meta.asOfIgnoredReason" explain a fallback ("date-not-covered": the as-of ' +
               'grid has not been computed for this date, so the numbers are full-session; ' +
-              '"non-premarket-session" — asOfTime only applies to a premarket scan; ' +
-              '"unparseable"). Coverage is a set with HOLES that grows as the backfill runs, ' +
-              'so do NOT assume any cutover date — read the meta per request. An unhonoured ' +
-              'asOfTime is never an error, so this is the only reliable check. ' +
-              'ALSO NOTE: this basis is where near-zero RVOL baselines come from — pair it ' +
-              'with minBaselineVolume (see "baselineThin").',
+              '"non-premarket-session": asOfTime only applies to a premarket scan; ' +
+              '"unparseable"). Coverage is a set with holes that grows as the backfill runs, ' +
+              'so there is no single cutover date; the meta is per request. An unhonoured ' +
+              'asOfTime is never an error, so the meta is the only reliable signal. ' +
+              'This basis is where near-zero RVOL baselines come from (see "baselineThin" ' +
+              'and minBaselineVolume).',
           ),
         baselineDays: z
           .number()
@@ -377,8 +367,8 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
               'warm-up lookback scales with it automatically, so a wide window is never ' +
               'under-filled into an inflated ratio; the minimum-warm-days gate (20 prior ' +
               'sessions) does NOT scale down, so at the 30-row default a ticker needs ' +
-              '20 of its last 30 sessions populated before rvol is non-null. Omit for ' +
-              'the standard 30-day baseline; pass 90 for the pre-2026-09 window.',
+              '20 of its last 30 sessions populated before rvol is non-null. Unset means ' +
+              'the standard 30-day baseline; 90 reproduces the pre-2026-09 window.',
           ),
       }),
       annotations: { readOnlyHint: true },

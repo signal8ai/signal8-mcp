@@ -8,7 +8,7 @@
  * - get_politician_activity: Activity metrics by period for a politician
  * - get_politicians_most_active: Most active politicians (discovery)
  * - get_politician_recent_trades: Recent trades across all politicians (discovery)
- * - get_politician_late_filers: STOCK Act late filing violations (discovery)
+ * - get_politician_late_filers: STOCK Act late filings (discovery)
  * - get_politician_disclosures: Per-disclosure PTR / 278-T feed with an exactly-once polling cursor (discovery)
  * - get_politician_committees: Committee assignments for a politician
  * - get_politician_sponsored_bills: Sponsored legislation for a politician
@@ -88,8 +88,8 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
       title: 'Get Politician Detail',
       description:
         'Get the full profile for a politician including party, state, chamber, trade statistics, ' +
-        'filing delay metrics, most traded sector, and their 10 most recent transactions. ' +
-        'Use get_politicians first to find the slug (e.g. "sen-nancy-pelosi").',
+        'filing delay metrics, most traded sector, and their 10 most recent transactions. The ' +
+        'politician is identified by URL slug (e.g. "sen-nancy-pelosi").',
       inputSchema: z.object({
         slug: z.string().describe(
           'Politician URL slug (e.g., "sen-nancy-pelosi", "sen-tommy-tuberville")',
@@ -234,24 +234,25 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
     {
       title: 'Get Politician Disclosures (Feed)',
       description:
-        'Per-DISCLOSURE feed of politician trades: one item per congressional STOCK Act periodic ' +
+        'Per-disclosure feed of politician trades: one item per congressional STOCK Act periodic ' +
         'transaction report (PTR) or executive-branch OGE Form 278-T that contains at least one trade ' +
-        'whose bracket LOWER bound is >= minAmount. Each item carries the politician, filing link, ' +
-        'filing delay, and ALL trades of the report sorted largest bracket first, with ' +
-        'qualifyingTradeCount for how many clear the threshold. Built for polling: pass the returned ' +
-        'nextCursor back as `since` and each disclosure is returned exactly once (for the same ' +
-        'minAmount and kinds); keep nextCursor even when items is empty, and call again at once when ' +
-        'hasMore is true. Without `since` only disclosures that became complete in the last 48h are ' +
-        'returned. A report is emitted only after no new row of it has arrived for a settle window ' +
-        '(~8h), so items lag the filing by hours; a report that GROWS materially afterwards (+25 trades ' +
-        'or +20%) is emitted once more with a higher `revision`, and `replacesPrevious: true` when you ' +
-        'already had it — replace it by `id`. filingDelayDays (longest lag), isLateFiling (>45 days) ' +
-        'and lateTradeCount EXCLUDE trades with transactionDateSuspect=true: a date lagging its own ' +
-        'otherwise on-time report by ~one year is a probable mistyped year upstream, listed as filed ' +
-        'and counted in suspectDateCount — never quote it as a filing lag. owner null means the filing ' +
-        'did not state one ("Not stated"), NEVER "Self". Render amountRange (the filed bracket); ' +
-        'amountMin null means the bracket was not parsed (never $0), amountMax null means "Over ' +
-        '$50,000,000" or unparsed, ticker null means a non-equity asset.',
+        'whose bracket lower bound is >= minAmount. Each item carries the politician, filing link, ' +
+        'filing delay, and every trade of the report sorted largest bracket first, with ' +
+        'qualifyingTradeCount for how many clear the threshold. Polling contract: the returned ' +
+        'nextCursor, sent back as `since`, returns each disclosure exactly once (for the same ' +
+        'minAmount and kinds); nextCursor is returned even when items is empty, and hasMore true ' +
+        'means more items are immediately available. Without `since` only disclosures that became ' +
+        'complete in the last 48h are returned. A report is emitted only after no new row of it has ' +
+        'arrived for a settle window (~8h), so items lag the filing by hours; a report that grows ' +
+        'materially afterwards (+25 trades or +20%) is emitted once more with a higher `revision`, ' +
+        'and `replacesPrevious: true` marks a report previously delivered under the same `id`. ' +
+        'filingDelayDays (longest lag), isLateFiling (>45 days) and lateTradeCount exclude trades ' +
+        'with transactionDateSuspect=true: a date lagging its own otherwise on-time report by about ' +
+        'one year is a probable mistyped year upstream, listed as filed and counted in ' +
+        'suspectDateCount, and its lag is not a measured filing delay. owner null means the filing ' +
+        'did not state an owner ("Not stated"); it does not mean "Self". amountRange is the filed ' +
+        'bracket; amountMin null means the bracket was not parsed (not $0), amountMax null means ' +
+        '"Over $50,000,000" or unparsed, and ticker null means a non-equity asset.',
       inputSchema: z.object({
         since: z.string().optional().describe(
           'Opaque cursor: the nextCursor from a previous call, verbatim. Omit only on the first call.',
@@ -291,12 +292,13 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
     {
       title: 'Get Politician Late Filers',
       description:
-        'Get STOCK Act late filing violations -- trades where the disclosure was filed more than ' +
-        '45 days after the transaction (a legal violation). Sorted by filing delay descending. ' +
-        'Excludes trades whose transaction date is suspect (a probable mistyped year upstream: ' +
-        '~one year off the rest of its own on-time filing) -- their delay is not measured. owner ' +
-        'null means not stated, never "Self". Useful for identifying politicians with poor ' +
-        'disclosure compliance.',
+        'Get STOCK Act late filings: trades whose disclosure was filed more than 45 days after the ' +
+        'transaction, the latest the STOCK Act allows. Lateness is a fact about the dates on the ' +
+        'report, not a finding of illegality or a violation: an extension, an amendment or a late ' +
+        'notice of the trade can each explain a long gap. Sorted by filing delay descending. Excludes ' +
+        'trades whose transaction date is suspect (a probable mistyped year upstream, about one year ' +
+        'off the rest of its own on-time filing); their delay is not measured. owner null means not ' +
+        'stated; it does not mean "Self".',
       inputSchema: z.object({
         days: z.number().min(1).max(730).optional().describe(
           'Lookback period in days (default: 180, max: 730)',
@@ -326,10 +328,10 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
     {
       title: 'Get Politician Committees',
       description:
-        'Get committee assignments for a politician including committee name, chamber, ' +
-        'role (Chair, Ranking Member, etc.), and subcommittee memberships. Use to correlate ' +
-        'trading activity with committee oversight areas. Requires a politician slug ' +
-        '(e.g. "sen-nancy-pelosi") -- use get_politicians first to find the slug.',
+        'Get committee assignments for a politician including committee name, chamber, role (Chair, ' +
+        'Ranking Member, etc.), and subcommittee memberships, for relating trading activity to ' +
+        'committee oversight areas. The politician is identified by URL slug (e.g. ' +
+        '"sen-nancy-pelosi").',
       inputSchema: z.object({
         slug: z.string().describe(
           'Politician URL slug (e.g., "sen-nancy-pelosi", "rep-nancy-pelosi")',
@@ -348,9 +350,9 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
     {
       title: 'Get Politician Sponsored Bills',
       description:
-        'Get sponsored legislation for a politician from Congress.gov. Returns bill number, ' +
-        'title, policy area, introduced date, latest action, and public URL. Use get_politicians ' +
-        'first to find the slug. Requires CONGRESS_API_KEY on the backend.',
+        'Get sponsored legislation for a politician from Congress.gov. Returns bill number, title, ' +
+        'policy area, introduced date, latest action, and public URL. The politician is identified by ' +
+        'URL slug. Requires CONGRESS_API_KEY on the backend.',
       inputSchema: z.object({
         slug: z.string().describe(
           'Politician URL slug (e.g., "sen-nancy-pelosi")',
@@ -418,18 +420,18 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
     {
       title: 'Get Politician P&L',
       description:
-        'Get estimated realized + unrealized profit & loss for a politician. Methodology: ' +
-        'each disclosed trade amount range is converted to an estimated share count using the ' +
-        "stock's historical market price on the transaction date, then FIFO-matched on SHARES " +
-        '(realized = (sellPrice − buyPrice) × matched shares); open positions are marked to ' +
-        'the current price for unrealized P&L. Works for Congress (sen-/rep-) AND executive ' +
-        'branch (exec-) officials. Response includes a `totals` object (estimatedRealizedPnl, ' +
-        'estimatedUnrealizedPnl, winRate, realizedTrades, tickersTraded) and a `byTicker[]` ' +
-        'breakdown (estimatedShares, avgCostBasis, currentPrice, realizedPnl, unrealizedPnl, ' +
-        'unrealizedPnlPercent) — byTicker open positions double as the estimated holdings. ' +
-        'All figures are ESTIMATES (±25-40% from disclosure bracket width). Use get_politicians first to find the slug.',
+        'Get estimated realized + unrealized profit & loss for a politician. Methodology: each ' +
+        'disclosed trade amount range is converted to an estimated share count using the stock\'s ' +
+        'historical market price on the transaction date, then FIFO-matched on shares (realized = ' +
+        '(sellPrice - buyPrice) x matched shares); open positions are marked to the current price for ' +
+        'unrealized P&L. Covers Congress (sen-/rep-) and executive branch (exec-) officials, ' +
+        'identified by URL slug. Response includes a `totals` object (estimatedRealizedPnl, ' +
+        'estimatedUnrealizedPnl, winRate, realizedTrades, tickersTraded) and a `byTicker[]` breakdown ' +
+        '(estimatedShares, avgCostBasis, currentPrice, realizedPnl, unrealizedPnl, ' +
+        'unrealizedPnlPercent); byTicker open positions double as the estimated holdings. All figures ' +
+        'are estimates (±25-40% from disclosure bracket width).',
       inputSchema: z.object({
-        slug: z.string().describe('Politician URL slug — congressional ("sen-nancy-pelosi", "rep-...") or executive ("exec-trump-donald-j")'),
+        slug: z.string().describe('Politician URL slug: congressional ("sen-nancy-pelosi", "rep-...") or executive ("exec-trump-donald-j")'),
       }),
       annotations: { readOnlyHint: true },
     },
@@ -480,27 +482,24 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
     {
       title: 'Get Politician P&L Scorecard',
       description:
-        'Top 5 and bottom 5 politicians (Congress + executive-branch officials) by ESTIMATED ' +
-        'trading P&L over a trailing window (default and only supported window: 90 days), plus ' +
-        "SPY's return over the same window as a benchmark, and imageUrl — a ready-to-attach " +
-        '2160x2700 PNG card of the same ranking (null when unavailable; card.reason says why). ' +
-        'ALL P&L FIGURES ARE ESTIMATES (estimate: true, estimateRange "±25–40%"): disclosed ' +
-        'amount RANGES are converted to shares at the historical close, FIFO-matched, and open ' +
-        'positions marked to the latest quote. State that they are estimates whenever you ' +
-        'publish them; the card already prints "Estimates from disclosed amount ranges ' +
-        '(±25–40%). Not investment advice." ' +
-        'WHAT THE METRIC IS (read `metric`): P&L on trades DISCLOSED INSIDE the window only — ' +
-        'realized on round trips opened and closed in the window plus unrealized on positions ' +
-        'opened in the window. It is NOT lifetime P&L; sales of positions bought before the ' +
-        'window are not counted. Eligibility: at least 5 trades in the window ' +
-        '(eligibility.minTradesInWindow), so a single lucky trade cannot top the board. ' +
-        'Each row: slug, fullTitle ("Senator", "Representative", or an executive official\'s ' +
-        'filed title), fullName, displayName, party and state as full words, estimatedPnl, ' +
-        'winRate (0-1; null = no position closed in the window — not measured, never 0%), ' +
-        'tradesInWindow, unrealizedMeasured, and portraitUrl (always null for executive ' +
-        'officials). Use the full title and full party/state words — never "Sen." or "D-CA". ' +
-        'benchmark.available false means SPY was NOT measured (benchmark.reason) — never 0%. ' +
-        'available false with reason "pending" means the window has not been computed yet, ' +
+        'Top 5 and bottom 5 politicians (Congress + executive-branch officials) by estimated trading ' +
+        'P&L over a trailing window (default and only supported window: 90 days), plus SPY\'s return ' +
+        'over the same window as a benchmark, and imageUrl: a 2160x2700 PNG card of the same ranking ' +
+        '(null when unavailable; card.reason says why). All P&L figures are estimates (estimate: ' +
+        'true, estimateRange "±25–40%"): disclosed amount ranges are converted to shares at the ' +
+        'historical close, FIFO-matched, and open positions marked to the latest quote. The card ' +
+        'prints "Estimates from disclosed amount ranges (±25–40%). Not investment advice." The ' +
+        '`metric` field defines the figure: P&L on trades disclosed inside the window only, i.e. ' +
+        'realized on round trips opened and closed in the window plus unrealized on positions opened ' +
+        'in the window. It is not lifetime P&L; sales of positions bought before the window are not ' +
+        'counted. Eligibility: at least 5 trades in the window (eligibility.minTradesInWindow), so a ' +
+        'single lucky trade cannot top the board. Each row: slug, fullTitle ("Senator", ' +
+        '"Representative", or an executive official\'s filed title), fullName, displayName, party and ' +
+        'state as full words (the publishable form, rather than "Sen." or "D-CA"), estimatedPnl, ' +
+        'winRate (0-1; null = no position closed in the window, which is not measured and not 0%), ' +
+        'tradesInWindow, unrealizedMeasured, and portraitUrl (always null for executive officials). ' +
+        'benchmark.available false means SPY was not measured (benchmark.reason); it is not a 0% ' +
+        'return. available false with reason "pending" means the window has not been computed yet, ' +
         'not that nobody traded.',
       inputSchema: z.object({
         window: z.literal(90).optional().describe(
@@ -522,8 +521,8 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
     {
       title: 'Get Politician Roles',
       description:
-        'Get committee leadership roles (Chair, Ranking Member, etc.) for a politician. ' +
-        'Use get_politicians first to find the slug.',
+        'Get committee leadership roles (Chair, Ranking Member, etc.) for a politician, identified by ' +
+        'URL slug (e.g. "sen-nancy-pelosi").',
       inputSchema: z.object({
         slug: z.string().describe('Politician URL slug (e.g., "sen-nancy-pelosi")'),
       }),
@@ -540,9 +539,9 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
     {
       title: 'Get Recent Congressional Votes',
       description:
-        'Get recent congressional roll-call votes across all members, sourced from GovTrack ' +
-        '(both chambers as available — currently Senate-heavy). Each vote includes member, ' +
-        'bill info, position, and result.',
+        'Get recent congressional roll-call votes across all members, sourced from GovTrack (both ' +
+        'chambers as available; currently Senate-heavy). Each vote includes member, bill info, ' +
+        'position, and result.',
       inputSchema: z.object({
         limit: z.number().min(1).max(100).optional().describe(
           'Maximum results to return (default: 50, max: 100)',
@@ -608,12 +607,11 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
     {
       title: 'Get Trending Politicians',
       description:
-        'Rank politicians by 7-day trade-count surge vs their 90-day baseline. ' +
-        'Cold-start politicians (less than 90 days of trade history) are flagged ' +
-        'with isNew=true and surgeMultiplier=null (frontend renders a "New activity" ' +
-        'badge instead of the numeric multiplier). Sorted with new politicians first, ' +
-        'then highest multiplier first, then largest 7-day count as the tiebreaker. ' +
-        'Backed by an hourly precomputed snapshot — never recomputed on the request hot path.',
+        'Rank politicians by 7-day trade-count surge vs their 90-day baseline. Cold-start politicians ' +
+        '(less than 90 days of trade history) are flagged with isNew=true and surgeMultiplier=null ' +
+        '(shown as "New activity" rather than a numeric multiplier). Sorted with new politicians ' +
+        'first, then highest multiplier first, then largest 7-day count as the tiebreaker. Backed by ' +
+        'an hourly precomputed snapshot, not recomputed per request.',
       inputSchema: z.object({
         limit: z.number().min(1).max(50).optional().describe(
           'Maximum rows to return (default: 10, max: 50)',
@@ -646,11 +644,11 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
     {
       title: 'Get Political Sector Rotation',
       description:
-        'Which market SECTORS politicians have been trading in over a trailing window. ' +
-        'Aggregates congressional + executive trades by sector and returns, per sector: ' +
-        'trade count, total dollar volume, number of distinct politicians, and the top ' +
-        'tickers. Use it to see where political trading activity is concentrating (e.g. ' +
-        '"politicians piled into Energy this month"). Sort by count or dollar volume.',
+        'Which market sectors politicians have been trading in over a trailing window. Aggregates ' +
+        'congressional + executive trades by sector and returns, per sector: trade count, total ' +
+        'dollar volume, number of distinct politicians, and the top tickers, showing where political ' +
+        'trading activity is concentrating (e.g. "politicians piled into Energy this month"). ' +
+        'Sortable by count or dollar volume.',
       inputSchema: z.object({
         sortBy: z.enum(['count', 'volume']).optional().describe(
           'Rank sectors by trade count or summed dollar volume (default: count)',
@@ -688,10 +686,10 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
     {
       title: 'Get Cross-Politician Donor-Trade Overlap',
       description:
-        'Find politicians who traded stocks of their own campaign donors in a given cycle, ' +
-        'ranked by confidence (high > medium > low) and trade dollar volume. Honours both ' +
-        'candidate-mode FEC rows and the exec-* reverse-lookup path so executive-branch ' +
-        'officials are included. Heavy join — response is cached 15 min server-side.',
+        'Find politicians who traded stocks of their own campaign donors in a given cycle, ranked by ' +
+        'confidence (high > medium > low) and trade dollar volume. Honours both candidate-mode FEC ' +
+        'rows and the exec-* reverse-lookup path so executive-branch officials are included. Heavy ' +
+        'join; the response is cached 15 min server-side.',
       inputSchema: z.object({
         cycle: z.number().optional().describe(
           'Election cycle (4-digit year). Defaults to the latest cycle in fec_contributions.',
@@ -735,8 +733,8 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
     {
       title: 'Get Senate Trades by Ticker',
       description:
-        'Reverse lookup — find which politicians recently traded a given TICKER. Returns recent ' +
-        'STOCK Act disclosures for that symbol with politician info, transaction type, and amount.',
+        'Reverse lookup: which politicians recently traded a given ticker. Returns recent STOCK Act ' +
+        'disclosures for that symbol with politician info, transaction type, and amount.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "NVDA")'),
         limit: z.number().min(1).max(100).optional().describe(

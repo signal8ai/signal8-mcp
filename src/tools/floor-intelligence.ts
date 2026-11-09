@@ -37,14 +37,14 @@ const MIN_RELEVANCE = z.enum(['none', 'low', 'medium', 'high']);
  * tickers are mechanically verified upstream against the bill text.
  */
 const FLOOR_INTEL_DISCLAIMER =
-  ' IMPORTANT: affectedTickers contains VERIFIED rows only — every ticker carries a ' +
-  'verbatim evidenceQuote substring-verified against the actual bill text (no hallucinated ' +
-  'tickers). sponsorTradeFacts are restatements of public STOCK Act disclosures with ' +
-  'verbatim amount brackets and BOTH transactionDate AND disclosureDate — always cite both ' +
-  'dates together (disclosures lag trades by up to 45 days), and never present a fact as ' +
-  'evidence of wrongdoing. Vote windows are predictions: check window.provenance for trust ' +
-  "level ('uc_explicit' is exact; 'rule_xxii_computed' is a medium-confidence estimate) and " +
-  'window.granularity for how precise the window is (exact time vs day vs week).';
+  ' affectedTickers contains verified rows only: every ticker carries a verbatim ' +
+  'evidenceQuote substring-verified against the actual bill text. sponsorTradeFacts are ' +
+  'restatements of public STOCK Act disclosures with verbatim amount brackets and both ' +
+  'transactionDate and disclosureDate (disclosures lag trades by up to 45 days); a fact is ' +
+  'a disclosure on record, not evidence of wrongdoing. Vote windows are predictions: ' +
+  "window.provenance is the trust level ('uc_explicit' is exact; 'rule_xxii_computed' is a " +
+  'medium-confidence estimate) and window.granularity is how precise the window is (exact ' +
+  'time vs day vs week).';
 
 /**
  * Register Floor Intelligence tools on the MCP server.
@@ -63,16 +63,15 @@ export function registerFloorIntelligenceTools(
     {
       title: 'Get Legislative Calendar',
       description:
-        'Forward-looking legislative catalyst calendar: upcoming House/Senate floor votes ' +
-        '(bills and Senate cloture motions) filtered to items that can move tickers. Each item ' +
-        'includes the predicted vote window (start/end/granularity/confidence/provenance), ' +
-        'marketRelevance (low/medium/high), significance (1-5), affected sectors with ' +
-        'direction + mechanism, verified affected tickers with evidence quotes, pass outlook, ' +
-        'considerationProcedure (suspension-calendar bills pass ~98% of the time), a ' +
-        'conflictBadge when the sponsor traded a verified affected ticker, and tweet/plain ' +
-        'summaries. An EMPTY calendar is a normal state — it means nothing market-relevant is ' +
-        'scheduled in the window, not an error. Defaults: from=today, to=+14 days, ' +
-        'minRelevance=low.' +
+        'Forward-looking legislative catalyst calendar: upcoming House/Senate floor votes (bills and ' +
+        'Senate cloture motions) filtered to items that can move tickers. Each item includes the ' +
+        'predicted vote window (start/end/granularity/confidence/provenance), marketRelevance ' +
+        '(low/medium/high), significance (1-5), affected sectors with direction + mechanism, verified ' +
+        'affected tickers with evidence quotes, pass outlook, considerationProcedure ' +
+        '(suspension-calendar bills pass ~98% of the time), a conflictBadge when the sponsor traded a ' +
+        'verified affected ticker, billKey (the "<congress>-<type>-<number>" bill id), and ' +
+        'tweet/plain summaries. An empty calendar is a normal state: nothing market-relevant is ' +
+        'scheduled in the window, not an error. Defaults: from=today, to=+14 days, minRelevance=low.' +
         FLOOR_INTEL_DISCLAIMER,
       inputSchema: z.object({
         from: DATE_PATTERN().optional().describe(
@@ -83,7 +82,7 @@ export function registerFloorIntelligenceTools(
         ),
         minRelevance: MIN_RELEVANCE.optional().describe(
           "Minimum market relevance: 'low' (default), 'medium', 'high', or 'none' " +
-          "(explicit opt-in to the full audit trail incl. non-market items — rarely useful)",
+          "(explicit opt-in to the full audit trail incl. non-market items, rarely useful)",
         ),
         limit: z.number().min(1).max(100).optional().describe(
           'Maximum results to return (default: 25, max: 100)',
@@ -110,17 +109,16 @@ export function registerFloorIntelligenceTools(
     {
       title: 'Get Bill Impact',
       description:
-        'Market-impact detail for one upcoming bill on the floor calendar. Pass a billId ' +
-        'in "<congress>-<type>-<number>" form (e.g. "119-hr-3633") — get it from the ' +
-        '`billKey` field of get_legislative_calendar (NOT a stock ticker). Returns the ' +
-        "bill's affected tickers/sectors, the sponsor's disclosed STOCK Act trades matched " +
-        'to those tickers/sectors, key dates, and status history (e.g. a "pulled" bill = ' +
-        'leadership lost the votes).' +
+        'Market-impact detail for one upcoming bill on the floor calendar, identified by billId in ' +
+        '"<congress>-<type>-<number>" form (e.g. "119-hr-3633"; the calendar\'s `billKey`, not a stock ' +
+        'ticker). Returns the bill\'s affected tickers/sectors, the sponsor\'s disclosed STOCK Act ' +
+        'trades matched to those tickers/sectors, key dates, and status history (e.g. a "pulled" bill ' +
+        '= leadership lost the votes).' +
         FLOOR_INTEL_DISCLAIMER,
       inputSchema: z.object({
         billId: z.string().describe(
-          'Bill key in "<congress>-<type>-<number>" form (e.g. "119-hr-3633") — the billKey ' +
-          'field from get_legislative_calendar',
+          'Bill key in "<congress>-<type>-<number>" form (e.g. "119-hr-3633"): the billKey ' +
+          'field of a legislative calendar item',
         ),
       }),
       annotations: { readOnlyHint: true },
@@ -139,13 +137,12 @@ export function registerFloorIntelligenceTools(
     {
       title: 'Get Politician Upcoming Bills',
       description:
-        'Upcoming floor items a politician SPONSORS, each with politician-scoped conflict ' +
-        'facts (their disclosed STOCK Act trades matched against the bill\'s verified ' +
-        'tickers/sectors), plus an identity summary. Use for "does <politician> have a ' +
-        'financial stake in their own upcoming bills" style questions. Congressional slugs ' +
-        'only — executive-branch (exec-) officials do not sponsor legislation and return an ' +
-        'empty list; an empty list for a congressional member simply means none of their ' +
-        'bills are on the upcoming floor schedule.' +
+        'Upcoming floor items a politician sponsors, each with politician-scoped conflict facts ' +
+        '(their disclosed STOCK Act trades matched against the bill\'s verified tickers/sectors), plus ' +
+        'an identity summary; it shows whether a politician has a disclosed financial stake in their ' +
+        'own upcoming bills. Congressional slugs only: executive-branch (exec-) officials sponsor no ' +
+        'legislation and return an empty list; an empty list for a congressional member means ' +
+        'none of their bills are on the upcoming floor schedule.' +
         FLOOR_INTEL_DISCLAIMER,
       inputSchema: z.object({
         slug: z.string().describe(

@@ -15,6 +15,37 @@ import { type Signal8ApiClient } from '../api-client.js';
 import { toolHandler } from './tool-handler.js';
 
 /**
+ * Clinical-trials search vocabularies. Mirrors TRIAL_PHASES / TRIAL_STATUSES /
+ * TRIAL_DATE_FIELDS / TRIAL_SORT_FIELDS in backend/src/routes/clinical-trials.ts
+ * (the backend 400s on anything else). Duplicated, not imported: this package
+ * is published standalone and cannot depend on the backend tree.
+ */
+export const CT_PHASES = ['EARLY_PHASE1', 'PHASE1', 'PHASE2', 'PHASE3', 'PHASE4'] as const;
+export const CT_STATUSES = [
+  'ACTIVE_NOT_RECRUITING',
+  'COMPLETED',
+  'ENROLLING_BY_INVITATION',
+  'NOT_YET_RECRUITING',
+  'RECRUITING',
+  'SUSPENDED',
+  'TERMINATED',
+  'WITHDRAWN',
+  'AVAILABLE',
+  'NO_LONGER_AVAILABLE',
+  'TEMPORARILY_NOT_AVAILABLE',
+  'APPROVED_FOR_MARKETING',
+  'WITHHELD',
+  'UNKNOWN',
+] as const;
+export const CT_DATE_FIELDS = [
+  'primary_completion_date',
+  'completion_date',
+  'start_date',
+  'last_update_date',
+] as const;
+export const CT_SORT_FIELDS = [...CT_DATE_FIELDS, 'updated_at'] as const;
+
+/**
  * Register all 13 Phase 2 company data tools on the MCP server.
  */
 export function registerCompanyDataTools(server: McpServer, client: Signal8ApiClient): void {
@@ -26,22 +57,27 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Get Stock Quote',
       description:
-        'Get the current stock quote for a company including price, volume, change, ' +
-        'market cap, and other real-time market data. Use this when a user asks about ' +
-        'a stock\'s current price or trading activity. Always includes ' +
-        'halted/haltCode/haltReason/haltedAt/resumptionAt trading-halt fields ' +
-        '(false/null when trading normally); a halted ticker returns the last-known ' +
-        'quote instead of an error, or currentPrice:null + halted:true when nothing ' +
-        'is recoverable. marketCap is the live price × the SEC-derived share count; ' +
-        'when that count is unavailable it is null with marketCapWithheldReason set — ' +
-        'NOT MEASURED, never "no market cap" and never $0. The count itself rides as `sharesOutstanding` with ' +
-        '`sharesOutstandingAsOf` + `sharesOutstandingAsOfKind` ("stated" = the issuer\'s statement date; "checked" = when it was last ' +
-        'confirmed against a vendor; "none" = date not recorded) and a vendor-free `sharesOutstandingSource` — quote the date with the count. ' +
-        'When no MEASURED count exists, `sharesOutstanding` and `marketCap` are a BEST ESTIMATE (the newest dated filed or reference count, ' +
-        'moved onto today\'s split basis): `sharesOutstandingEstimated: true`, `sharesOutstandingEstimateKind` ("stated_as_of" = the ISSUER\'s last ' +
-        'stated count, a dated point; the filings record later issuances LISTED in `statedAsOf.events`, not added — "at_least" is the retired name ' +
-        'of the same state) and `marketCapEstimated: true` with `marketCapAsOf` (the count\'s date). Render a stated_as_of count WITH its date and its ' +
-        'events ("2,357,498 as of 2026-10-08 · plus an offering closed 2026-10-09 whose share count is not stated"); never as a bound, never as today\'s count.',
+        'Get the current stock quote for a company: price, volume, change, market cap and other real-time ' +
+        'market data. Trading-halt fields halted, haltCode, haltReason, haltedAt and resumptionAt are ' +
+        'present on every response (false/null when trading normally); a halted ticker returns the ' +
+        'last-known quote instead of an error, or currentPrice null with halted true when nothing is ' +
+        'recoverable. `priceAsOfDate` is the ET date the price printed (`priceAsOf` the trade time when ' +
+        'known), not when it was read; null means the print date was not measured. `priceIsStale: true` ' +
+        'means the price is an older held close (the last trade on that date), not a current trading ' +
+        'price. `quoteSource: "screener_reference"` (foreign listings on US OTC that file nothing with ' +
+        'the SEC, e.g. PGPHF) means `currentPrice` is a vendor reference price whose print date is not ' +
+        'known, and every other market field is null (not measured). `marketCap` is the live price times ' +
+        'the SEC-derived share count; when that count is unavailable it is null with ' +
+        '`marketCapWithheldReason` set, which means not measured, not zero and not "no market cap". The ' +
+        'count is `sharesOutstanding`, dated by `sharesOutstandingAsOf` and `sharesOutstandingAsOfKind` ' +
+        '("stated" = the issuer\'s statement date; "checked" = when it was last confirmed against a ' +
+        'vendor; "none" = date not recorded), with a vendor-free `sharesOutstandingSource`. When no ' +
+        'measured count exists, `sharesOutstanding` and `marketCap` are a best estimate (the newest dated ' +
+        'filed or reference count, moved onto today\'s split basis): `sharesOutstandingEstimated: true`, ' +
+        '`sharesOutstandingEstimateKind` and `marketCapEstimated: true` with `marketCapAsOf` (the count\'s ' +
+        'date). Kind "stated_as_of" is the issuer\'s last stated count, a dated point rather than a bound ' +
+        'or today\'s count; later issuances recorded in the filings are listed in `statedAsOf.events`, not ' +
+        'added to it ("at_least" is the retired name of the same state).',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),
@@ -58,9 +94,8 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Get Market Metrics',
       description:
-        'Get computed market metrics for a company including volume averages, ' +
-        'volatility, SMAs, and trend direction. Use when analyzing trading patterns ' +
-        'or technical indicators beyond the basic quote.',
+        'Get computed market metrics for a company: volume averages, volatility, simple moving averages ' +
+        'and trend direction, beyond the basic quote.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),
@@ -77,18 +112,15 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Get Short Interest',
       description:
-        'Get short interest data for a company including short volume, short ratio, ' +
-        'days to cover, and short percent of float. Use when analyzing bearish ' +
-        'sentiment or potential short squeeze setups. ' +
-        '🔴 "shortInterestPercent" null ALWAYS carries "shortInterestPercentReason" (since 2026-10-04): ' +
-        '"float_not_point" = the float on record is a snapshot BOUND or ESTIMATE (<= / >= / ~), and a ' +
-        'percent-of-float is never struck off a bound — do NOT divide "shortInterest" by a ceiling, floor or ' +
-        'estimate from get_float yourself; "float_unavailable" = no float of any kind on record; ' +
-        '"short_pct_of_float_unreconciled" = a point float existed but the ratio was implausible or the ' +
-        'split basis could not be resolved; "float_class_scope_mismatch" = the float on record POOLS more than ' +
-        'one separately listed share class (e.g. Class A + Class D) while short interest is reported for this ' +
-        'symbol\'s class only — do NOT divide "shortInterest" by get_float\'s figure yourself for that ticker. ' +
-        'A null percent is NOT MEASURED, never 0%.',
+        'Get short interest data for a company: short volume, short ratio, days to cover and short ' +
+        'percent of float. A null `shortInterestPercent` always carries `shortInterestPercentReason`: ' +
+        '"float_not_point" means the float on record is a bound or estimate, and a percent-of-float is ' +
+        'not computed from a bound or estimate; "float_unavailable" means no float of any kind is on ' +
+        'record; "short_pct_of_float_unreconciled" means a point float existed but the ratio was ' +
+        'implausible or the split basis could not be resolved; "float_class_scope_mismatch" means the ' +
+        'float on record pools more than one separately listed share class (e.g. Class A plus Class D) ' +
+        'while short interest is reported for this symbol\'s class only, so the two figures are not ' +
+        'comparable. A null percent means not measured; it does not mean 0%.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),
@@ -105,111 +137,61 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Get Float Data',
       description:
-        'Get float data for a company: floatShares, floatDefinition, as-of date, and — when the ' +
-        'headline float is WITHHELD — the bounds and labelled stand-ins that replace it. Use when ' +
-        'analyzing share supply. The share count the float was judged against (`basisSharesOutstanding`) is DATED: ' +
-        '`sharesOutstandingAsOf` + `sharesOutstandingAsOfKind` ("stated" / "checked" / "none" = date not recorded) and a vendor-free ' +
-        '`sharesOutstandingSource`; never present the count without its date. ' +
-        'CARDINAL RULE: null / absent / withheld means NOT MEASURED — never "no float", never "no ' +
-        'restricted shares", never zero. A numeric 0 is a MEASURED zero and passes a null check, so ' +
-        'decide from the reason/marker field ("floatWithheldReason", "restrictedBlockCount", ' +
-        '"provenance", "direction"), never from the value alone. ' +
-        'IMPORTANT: check "floatDefinition" to know which float you are reading — ' +
-        '"tradeable" (shares outstanding minus affiliates minus restricted/unregistered blocks: ' +
-        'what can actually reach the tape; used on filing-derived dilution-snapshot tickers), ' +
-        '"non_affiliate" (the SEC I.B.6 figure, which INCLUDES restricted shares held by ' +
-        'non-affiliates — not what a trader means by float), "non_affiliate_estimate" ' +
-        '(approximated from ownership filings), or "free_float" (vendor methodology). ' +
-        'TODAY "floatDefinition" and "source" are only present on dilution-snapshot results: a ' +
-        'vendor-sourced float arrives with neither (just floatShares, asOfDate, floatEstimated) ' +
-        'because vendors are not named — read an ABSENT floatDefinition as "not a filing-derived ' +
-        'tradeable float" and do not assume it is tradeable. ' +
-        'On snapshot tickers "nonAffiliateFloatShares" carries the SEC I.B.6 figure separately — ' +
-        'it is the ONLY correct input to baby-shelf / I.B.6 shelf-capacity math; never use the ' +
-        'tradeable float there, and never present the non-affiliate figure as tradeable supply. ' +
-        'floatShares:null with "floatWithheldReason" set ("restricted_blocks_unnetted" | ' +
-        '"stated_figure_impossible" | "affiliate_basis_stale" | "affiliate_figure_declined" | ' +
-        '"affiliate_unreconciled" | "share_count_unavailable" | "split_post_dates_basis" | "split_unconfirmed" | "snapshot_float_unconfirmed" | "refusal_evaluation_failed") means the figure was deliberately ' +
-        'WITHHELD by the snapshot AND no lower tier could answer — do not substitute a vendor float of your own. ' +
-        'Since 2026-09-29 a snapshot that withheld its float FALLS THROUGH: when a lower tier can answer, "source" ' +
-        'names that tier (computed / sec-10k / a market-data vendor tier), "floatShares" is ITS figure under ITS definition, and ' +
-        '"snapshotFloatWithheldReason" carries the snapshot\'s reason as context ("the filing-derived snapshot could ' +
-        'not state a float; showing <source>"). Read that field as provenance, never as a second refusal. ' +
-        '🔴 SINCE 2026-10-03 THE SNAPSHOT FIGURE ALWAYS HEADLINES: when the snapshot carries ANY figure — "floatEstimate" ' +
-        '(bound "point" / "ceiling" / "floor"), "tradeableFloatCeiling", or an "affiliateBasis" range — "floatShares" stays ' +
-        'null and THAT figure is the answer. 🔴 RENDERING RULE (2026-10-18): print NO "~", "<=" or ">=" glyph. A "point" ' +
-        '(or a "floatEstimate" carrying "statedAsOf" {asOf, source, events[]}, the issuer\'s own dated count) is printed as the PLAIN ' +
-        'number followed by "as of <asOf>" and the caveat (the unsized later issuances in "statedAsOf.events"); a "ceiling" / ' +
-        '"floor" / range is NOT a figure — write "float not stated (the filings put it at most / at least N; <reason>)" and never ' +
-        'the bare number. A lower tier that also answered and passed the guard rides ' +
-        '"otherSourceFloat" {floatShares, source, provenance:"other_source", floatDefinition, asOfDate} as a SECONDARY ' +
-        '"other source" line — never the float, never arithmetic. A lower tier fills "floatShares" ONLY when the ' +
-        'snapshot carries no figure at all. 🔴 SINCE 2026-10-04 A TRIVIAL CEILING IS NOT A FIGURE: a snapshot ' +
-        'ceiling ("tradeableFloatCeiling", a "floatEstimate" with bound "ceiling", or an upper-only "affiliateBasis" ' +
-        'range) at or above 99% of the share count says only "the float is at most every issued share" and is ' +
-        'STRIPPED from the response (null), so the lower tier may headline under its own "source" with ' +
-        '"snapshotFloatWithheldReason" as context (e.g. a vendor figure of 5.12M, not "<= 11.18M" on 11.18M shares). ' +
-        'Floors and point estimates are never stripped. EXCEPT (2026-10-08): a "floatEstimate" with rung ' +
-        '"affiliate_sizing_estimate" carries a "reason" built from the filings\' itemised insiders (e.g. "no reported ' +
-        'insider holdings (4 affiliates at zero); 1 unreported: <name> (CFO, since <date>)") and "unsizedAffiliates" ' +
-        '[{holder, role, since}]; it is KEPT even at the share count because the reason is a finding — quote the reason ' +
-        'with the figure, and never present it as floatShares. A "shares_outstanding_ceiling" whose "reason" states a declared ' +
-        'affiliate floor ("the insider holdings the filings size total at least N shares") may likewise be served at the share ' +
-        'count, but ONLY as the last resort when no lower tier answered or its answer was refused (2026-10-11). ' +
-        '🔴 SUPERSEDED LATER ON 2026-10-11: EVERY "shares_outstanding_ceiling" now carries a "reason" (the declared floor, ' +
-        'or "the filings do not size the insider holdings, so none are deducted") and HEADLINES even at the share count — ' +
-        'a vendor figure then rides "otherSourceFloat" only. A "floatEstimate" may also carry "qualifier" (a short label — ' +
-        'quote it with the figure, e.g. "insider holdings not sized") and "offBasis" (an array): "pre_split_as_filed" = the ' +
-        'figure is AS OF "asOf", BEFORE the split(s) in "splitsAfter" [{ratio, effectiveDate, status}], NOT restated across ' +
-        'them; "ordinary_shares_unconverted" = in ORDINARY shares on an ADS whose ratio is unresolved, NOT ADSs; ' +
-        '"count_predates_issuances" = struck from a dated filing-cover count ("countSource") with later issuances not ' +
-        'counted. An "offBasis" figure is true ONLY with its label: never compare it with a price, a market cap, another ' +
-        'float or a threshold, and never state it without the label. ' +
-        'Since 2026-10-01 that fall-through is GUARDED: a lower-tier figure dated before a split the snapshot names, or ' +
-        'outside the snapshot\'s own floor / ceiling / point estimate, or (since 2026-10-08) COUNTED before share issuances ' +
-        'the snapshot records totalling at least 10% of it, is REFUSED and the withheld envelope is served with ' +
-        '"fallbackRefusal" {reason: "fallback_predates_split" | "fallback_predates_issuance" | "fallback_outside_snapshot_bounds", refusedSource, detail} ' +
-        'beside the snapshot\'s "floatWithheldReason". The refused figure is NOT in the response and must not be fetched ' +
-        'from a vendor to fill the gap — the detail says why no lower tier is shown either. A snapshot that stated a float ' +
-        'never carries it. A withheld ' +
-        'result may carry up to four stand-ins, each labelled IN the object; NONE is a float and ' +
-        'NONE may be fed to a market cap, a percent-of-float, a short-interest ratio, a screen, a ' +
-        'sort or a comparison: ' +
-        '(1) "tradeableFloatCeiling" is an UPPER BOUND — the tradeable float is AT MOST this; ' +
-        'render it with "<=" and nothing else (null = no bound stateable, never 0). ' +
-        '(2) "affiliateBasis.floatLowerBound" / "floatUpperBound" are a RANGE the float lies in — ' +
-        '"between X and Y"; each end is null independently when not measurable, so state the ends ' +
-        'that exist as inequalities. They bound the NON-AFFILIATE float, which still INCLUDES ' +
-        'restricted shares held by non-affiliates — NOT the tradeable floatShares. This object also ' +
-        'appears on PUBLISHED floats; there it is context, never a bound on floatShares (a ' +
-        '"convention_conservative" tradeable figure can sit BELOW floatLowerBound because it also ' +
-        'deducts the restricted shares the bound includes — that is not a contradiction). ' +
-        '(3) "floatEstimate" is a BADGED ESTIMATE {shares, basis, direction, confidence}: "basis" ' +
-        'is the itemised working (quote it), "direction" says which way it errs ("overstates" = the ' +
-        'true float is at most shares; "understates" = at least; "unknown"), "confidence" ' +
-        'describes the estimate, not a float. Since 2026-09-29 it is the SNAPSHOT FLOAT LADDER figure ' +
-        'on any withheld snapshot ticker and may also carry "rung" ("non_affiliate_estimate" | ' +
-        '"shares_outstanding_ceiling" | "rolled_forward_lower_bound" | "recital_rolled_forward_estimate" | "successor_exchange_estimate" | "affiliate_sizing_estimate" | ' +
-        '"form4_rolled_forward_estimate" (2026-10-18: the ownership table\'s D&O floor rolled forward by the insiders\' own Form 4/5 transactions since the table date) | ' +
-        '"best_estimate" (2026-10-18, founder: EVERY covered ticker shows ONE float number — the last rung: the MOST LIKELY figure when every filing-derived rung withheld; "basisKind" says what it rests on: rolled_forward_itemised | issuer_recital | declared_floor | affiliates_only_blocks_overlap | pre_split_derived | unconfirmed_split_excluded | vendor_float (with "vendorSource" / "vendorStale") | shares_outstanding_less_sized_affiliates | shares_outstanding; "assumptions" itemises every unsized holder and how it was treated, and "reason" opens "Estimate:" — report it AS an estimate with its assumptions, never as a measurement) | ' +
-        '"restricted_block_ceiling" — since 2026-10-18 a POINT: O/S less affiliates, less the restricted blocks the filings place outside them and the ' +
-        'part of the unplaced blocks too large to fit inside them, labelled "excludes N unregistered shares (<holders>)" in "reason"), "bound" ("point" = X as of "asOf"; ' +
-        '"ceiling" = AT MOST X, render "<= X"; "floor" = AT LEAST X, render ">= X" — both only on payloads minted before 2026-10-18: the ladder now serves ONE dated point or nothing) and ' +
-        '"asOf"; a floor or ceiling is a BOUND, never a point value. "statedAsOf" (when present) dates the point at the issuer\'s last stated count and lists later issuances NOT in it; "staleness" flags a point older than 12 months or one a known issuance post-dates. null means no figure could be ' +
-        'derived from the snapshot\'s structured fields. An estimate never becomes floatShares — present shares ' +
-        'WITH basis and direction, never alone. Unrelated to the boolean "floatEstimated", which ' +
-        'flags a published floatShares back-derived from a USD public-float disclosure. ' +
-        '(4) "vendorFallback" is a third-party free-float figure {floatShares, provenance:"vendor", ' +
-        'floatDefinition:"free_float", asOfDate, splitAdjusted} offered beside the withhold — NOT ' +
-        'our number, NOT on the tradeable definition, already refused when our filings refute it. ' +
-        'Present it as the vendor free float as of its own date, never in the "Float" slot. ' +
-        '"restrictedShares":null means NOT MEASURED (a block exists whose size the filings do not ' +
-        'state), NEVER zero; "restrictedBlockCount":0 is an answer, not an absence. ' +
-        '"affiliateBasisStale" (with basisSpanDays/affiliateAnchorDate) labels a float whose ' +
-        'affiliate table is materially older than its share count — the number itself is ' +
-        'unchanged. "tradeableBasis":"convention_conservative" means the filings did not answer ' +
-        'and a published convention resolved it — see "tradeableConvention" and do not present ' +
-        'the figure as exact.',
+        'Get float data for a company: floatShares, floatDefinition, the as-of date and, when the ' +
+        'headline float is withheld, the bounds and labelled stand-ins that replace it. Null, absent or ' +
+        'withheld means not measured; it does not mean "no float", "no restricted shares" or zero. A ' +
+        'numeric 0 is a measured zero, so the reason and marker fields ("floatWithheldReason", ' +
+        '"restrictedBlockCount", "provenance", "direction") carry the verdict, not the value alone. The ' +
+        'share count the float was judged against ("basisSharesOutstanding") is dated by ' +
+        '"sharesOutstandingAsOf" and "sharesOutstandingAsOfKind" ("stated", "checked", or "none" = date ' +
+        'not recorded) and "sharesOutstandingSource". "floatDefinition": "tradeable" (shares outstanding ' +
+        'minus affiliates minus restricted/unregistered blocks; filing-derived snapshot tickers), ' +
+        '"non_affiliate" (the SEC I.B.6 figure, which includes restricted shares held by non-affiliates ' +
+        'and is not a trader\'s float), "non_affiliate_estimate" (from ownership filings), "free_float" ' +
+        '(vendor). "floatDefinition" and "source" appear only on snapshot results; an absent ' +
+        'floatDefinition means the figure is not a filing-derived tradeable float. ' +
+        '"nonAffiliateFloatShares" (snapshot tickers) is the input that baby-shelf / I.B.6 math rests on; ' +
+        'it is not tradeable supply, and the tradeable float is not an I.B.6 input. Precedence: when the ' +
+        'snapshot carries any figure ("floatEstimate", "tradeableFloatCeiling", an "affiliateBasis" ' +
+        'range), "floatShares" stays null and that figure is the answer. A lower tier fills "floatShares" ' +
+        '(its own "source" and definition, with "snapshotFloatWithheldReason" as provenance context, not ' +
+        'a second refusal) only when the snapshot has no figure, or its only figure is a trivial ceiling ' +
+        '(at or above 99% of the share count), which is stripped. Floors, points, every ' +
+        '"shares_outstanding_ceiling" and an "affiliate_sizing_estimate" (with its "reason" and ' +
+        '"unsizedAffiliates") are kept. A lower tier that also answered appears as "otherSourceFloat" ' +
+        '{floatShares, source, provenance:"other_source", floatDefinition, asOfDate}: a secondary ' +
+        'other-source figure, not the float and not an input to arithmetic. A lower-tier figure that ' +
+        'predates a split the snapshot names, predates recorded issuances of 10% or more of it, or falls ' +
+        'outside the snapshot\'s bounds is refused: "fallbackRefusal" {reason, refusedSource, detail}. ' +
+        '"floatShares" null with "floatWithheldReason" set and no lower-tier figure means no source could ' +
+        'answer. A point (bound "point", or a "floatEstimate" with "statedAsOf" {asOf, source, events[]}) ' +
+        'is a plain number as of asOf, with the unsized later issuances in "statedAsOf.events" as its ' +
+        'caveat. A ceiling, floor or range is not a float figure: it means the filings put the float at ' +
+        'most or at least N. Stand-ins on a withheld result are not floats and are not inputs to a market ' +
+        'cap, percent-of-float, short-interest ratio, screen, sort or comparison. (1) ' +
+        '"tradeableFloatCeiling": the tradeable float is at most this (null = no bound, not 0). (2) ' +
+        '"affiliateBasis.floatLowerBound" / "floatUpperBound": a range for the non-affiliate float (still ' +
+        'including non-affiliate restricted shares); each end is null independently; on a published float ' +
+        'it is context only. (3) "floatEstimate" {shares, basis, direction, confidence, rung, bound, ' +
+        'asOf, reason, qualifier, offBasis, statedAsOf, staleness}: "basis" says what it rests on; ' +
+        '"direction" "overstates" = the true float is at most shares, "understates" = at least, ' +
+        '"unknown"; "rung" names the ladder step; rung "best_estimate" is the most likely figure when ' +
+        'every filing rung withheld ("basisKind" = what it rests on, "assumptions" = how each unsized ' +
+        'holder was treated), an estimate and not a measurement; "qualifier" is the caveat that belongs ' +
+        'with the figure. "offBasis": "pre_split_as_filed" (as of asOf, before "splitsAfter" [{ratio, ' +
+        'effectiveDate, status}]), "ordinary_shares_unconverted" (ordinary shares, not ADSs), ' +
+        '"count_predates_issuances" (dated cover count "countSource", later issuances uncounted); an ' +
+        'offBasis figure is accurate only with its label and is not comparable with a price, market cap, ' +
+        'another float or a threshold. "staleness" flags a point older than 12 months or post-dated by a ' +
+        'known issuance. An estimate never becomes floatShares. Unrelated to the boolean "floatEstimated" ' +
+        '(a published floatShares back-derived from a USD public-float disclosure). (4) "vendorFallback" ' +
+        '{floatShares, provenance:"vendor", floatDefinition:"free_float", asOfDate, splitAdjusted}: a ' +
+        'third-party free float as of its date, not Signal8\'s float. "restrictedShares" null means not ' +
+        'measured (a block exists whose size the filings leave unstated), not zero; "restrictedBlockCount" ' +
+        '0 is a measured answer. "affiliateBasisStale" (basisSpanDays, affiliateAnchorDate) labels an ' +
+        'affiliate table materially older than the share count. "tradeableBasis": ' +
+        '"convention_conservative" means a published convention resolved the figure (see ' +
+        '"tradeableConvention"), so it is not exact.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),
@@ -226,16 +208,12 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Get Float History',
       description:
-        'Get the POINT-IN-TIME float history for a company — one sample per trade date ' +
-        '(float shares, shares outstanding, and the source the float came from). Use to ' +
-        'answer "what was the float on date X" or to see float expand across a dilution ' +
-        'event, which the latest-only get_float cannot show. ' +
-        'IMPORTANT: this series is FORWARD-ONLY — it began accumulating in mid-2026 and is ' +
-        'NOT backfilled, so early/absent history is expected and an empty rows array is a ' +
-        'normal result, not an error or a delisted company. Each row carries "source" ' +
-        '("computed" | "sec_10k" or a market-data vendor tier) because float quality varies by ' +
-        'provider — weigh rows accordingly rather than treating all sources as equal. ' +
-        'Charged per your API tier.',
+        'Get the point-in-time float history for a company: one sample per trade date (float shares, ' +
+        'shares outstanding, and the source the float came from), showing the float on a past date and ' +
+        'how it expanded across a dilution event. The series is forward-only: it began accumulating in ' +
+        'mid-2026 and is not backfilled, so early or absent history is expected and an empty rows array ' +
+        'is a normal result, not an error or a sign of delisting. Each row carries "source" ("computed", ' +
+        '"sec_10k" or a market-data vendor tier) because float quality varies by provider.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
         days: z
@@ -260,10 +238,9 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Get Historical Stock Prices',
       description:
-        'Get historical OHLCV price candles for a stock. Supports daily, weekly, and monthly ' +
-        'resolutions. Use period shorthand (1M, 3M, 6M, 1Y, 5Y, ALL) or explicit from/to UNIX ' +
-        'timestamps. Default is 1 year of daily candles. Use this to compute price returns, ' +
-        'chart price history, or analyze volume trends over time.',
+        'Get historical OHLCV price candles for a stock at daily, weekly or monthly resolution, for a ' +
+        'period shorthand (1M, 3M, 6M, 1Y, 5Y or the full history) or an explicit from/to UNIX timestamp ' +
+        'window. The default is one year of daily candles.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
         period: z.enum(['1M', '3M', '6M', '1Y', '5Y', 'ALL'])
@@ -297,9 +274,8 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Get Stock Price Change',
       description:
-        'Get percentage price changes for a stock across multiple timeframes: ' +
-        '1D, 5D, 1M, 3M, 6M, YTD, 1Y, 3Y, 5Y, 10Y, and MAX. ' +
-        'Use this for quick "how much is it up/down" answers without fetching full candle data.',
+        'Get percentage price changes for a stock across multiple timeframes (1D, 5D, 1M, 3M, 6M, YTD, ' +
+        '1Y, 3Y, 5Y, 10Y and MAX) without full candle data.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),
@@ -318,9 +294,8 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Get Financial Statements',
       description:
-        'Get income statement, balance sheet, and cash flow data for a company. ' +
-        'Supports annual, quarterly, and trailing-twelve-month views. Use when ' +
-        'analyzing revenue, profitability, debt, or cash position.',
+        'Get income statement, balance sheet and cash flow data for a company (revenue, profitability, ' +
+        'debt, cash position), in annual, quarterly or trailing-twelve-month views.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
         type: z.enum(['annual', 'quarter', 'ttm'])
@@ -346,9 +321,8 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Get Earnings History',
       description:
-        'Get historical earnings data for a company including EPS actual vs estimate, ' +
-        'revenue actual vs estimate, and surprise percentages. Use when analyzing ' +
-        'earnings beats/misses or upcoming earnings expectations.',
+        'Get historical earnings data for a company: EPS actual vs estimate, revenue actual vs estimate, ' +
+        'and surprise percentages (beats and misses).',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
         limit: z.number().int().min(1).max(40)
@@ -370,9 +344,7 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Get Company Executives',
       description:
-        'Get key executives and officers of a company including name, title, ' +
-        'compensation, and tenure. Use when researching company leadership or ' +
-        'management quality.',
+        'Get the key executives and officers of a company: name, title, compensation and tenure.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),
@@ -449,13 +421,12 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Get Company News',
       description:
-        'Get recent news articles, press releases and AI-analysed SEC filings for a company. Use when ' +
-        'researching recent developments, catalysts, or sentiment drivers. Filing rows (category ' +
-        '"sec_filing") are event-bearing forms only (8-K, 6-K, 424B prospectus supplements, S-1/F-1, ' +
-        '10-K/10-Q/20-F, SC 13D, proxies, delisting notices; never Form 3/4/5, 13G or bank-note 424B2) ' +
-        'and carry formType + accessionNumber; a filing that repeats a press release is omitted in ' +
-        'favour of the release. For a small foreign issuer that files its news as 6-Ks, the filing IS ' +
-        'the news. Set pressReleasesOnly to return only official company press releases (no filings).',
+        'Get recent news articles, press releases and AI-analysed SEC filings for a company. Filing rows ' +
+        '(category "sec_filing") are event-bearing forms only (8-K, 6-K, 424B prospectus supplements, ' +
+        'S-1/F-1, 10-K/10-Q/20-F, SC 13D, proxies, delisting notices; never Form 3/4/5, 13G or bank-note ' +
+        '424B2) and carry formType and accessionNumber; a filing that repeats a press release is omitted ' +
+        'in favour of the release. For a small foreign issuer that files its news as 6-Ks, the filing is ' +
+        'the news. `pressReleasesOnly` returns only official company press releases (no filings).',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
         limit: z.number().int().min(1).max(20)
@@ -480,9 +451,8 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Get Analyst Consensus',
       description:
-        'Get analyst ratings consensus for a company including average target price, ' +
-        'number of analysts, buy/hold/sell breakdown, and consensus recommendation. ' +
-        'Use when evaluating Wall Street sentiment or price targets.',
+        'Get the analyst ratings consensus for a company: average target price, number of analysts, ' +
+        'buy/hold/sell breakdown and consensus recommendation.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),
@@ -499,9 +469,8 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Get Analyst Estimates',
       description:
-        'Get forward analyst estimates for a company including EPS, revenue, EBITDA, ' +
-        'and net income (low/high/avg) with analyst counts. Supports annual and quarterly ' +
-        'periods. Use when analyzing forward earnings expectations or revenue forecasts.',
+        'Get forward analyst estimates for a company: EPS, revenue, EBITDA and net income (low/high/avg) ' +
+        'with analyst counts, for annual or quarterly periods.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
         period: z.enum(['annual', 'quarter'])
@@ -557,21 +526,31 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Get Clinical Trials',
       description:
-        'Get clinical trial data for a biotech/pharma company including trial phase, ' +
-        'status, conditions, and interventions. Use when analyzing a biotech company\'s ' +
-        'pipeline or upcoming catalyst events.',
+        'Get the ClinicalTrials.gov trials Signal8 has matched to a company: phase, status, conditions, ' +
+        'interventions and key dates. The list includes trials the company leads and trials where it is ' +
+        'only a collaborator on another organisation\'s study. Each trial carries metadata.sponsorRole ' +
+        '("lead", "collaborator", or null = not determined) and metadata.sponsor (the lead sponsor). Only ' +
+        'lead trials are the company\'s own pipeline; a collaborator trial is a trial run by the named ' +
+        'lead sponsor that the company collaborates on. `sponsorRole: "lead"` filters to the company\'s ' +
+        'own trials. The response\'s total, leadTotal and collaboratorTotal count the full list, so a ' +
+        'total above the returned count means the list was truncated. Dates of type ESTIMATED are sponsor ' +
+        'projections, not facts.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "MRNA", "PFE")'),
         limit: z.number().int().min(1).max(50)
           .optional()
           .describe('Maximum number of clinical trials to return (1-50). Defaults to 10.'),
+        sponsorRole: z.enum(['lead', 'collaborator', 'all'])
+          .optional()
+          .describe('Filter by the company\'s role: "lead" (its own trials), "collaborator", or "all" (default).'),
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ ticker, limit }) =>
+    async ({ ticker, limit, sponsorRole }) =>
       toolHandler(() =>
         client.get(`/companies/${encodeURIComponent(ticker)}/clinical-trials`, {
           limit: String(limit ?? 10),
+          ...(sponsorRole ? { sponsorRole } : {}),
         }),
       ),
   );
@@ -581,18 +560,33 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Search Clinical Trials',
       description:
-        'Search clinical trials market-wide (cross-company). Distinct from get_clinical_trials, ' +
-        'which is scoped to a single ticker. Filter by phase, indication, sponsor, status, and ' +
-        'date window; sort and paginate the results.',
+        'Search clinical trials market-wide (across companies), filtered by phase, indication, sponsor, ' +
+        'status and date window, with sorting and pagination. An unrecognised phase, status, dateField or ' +
+        'sort value is rejected with the allowed list (it is never silently ignored). A result\'s ticker ' +
+        'is the company whose trial list the row was collected under, which may be the lead sponsor or ' +
+        'only a collaborator; metadata.sponsor is the lead sponsor, so a row is that ticker\'s own trial ' +
+        'only when metadata.sponsor is that company.',
       inputSchema: z.object({
-        phase: z.string().optional().describe('Trial phase filter (e.g., "Phase 3")'),
-        indication: z.string().optional().describe('Condition / indication filter'),
-        sponsor: z.string().optional().describe('Sponsor name filter'),
-        status: z.string().optional().describe('Trial status filter'),
-        dateField: z.string().optional().describe('Date field to filter/sort on'),
-        from: z.string().optional().describe('Start date (YYYY-MM-DD)'),
-        to: z.string().optional().describe('End date (YYYY-MM-DD)'),
-        sort: z.string().optional().describe('Sort field'),
+        phase: z.string().optional().describe(
+          'Comma-separated phases, matching ANY of them. Allowed tokens: ' +
+            CT_PHASES.join(', ') + ' (also accepted: "Phase 2", "2", "Early Phase 1"). ' +
+            'Example: "PHASE2,PHASE3". A combined "Phase 2/Phase 3" string is rejected; each phase is a separate token.',
+        ),
+        indication: z.string().optional().describe(
+          'Comma-separated condition names, exact match (case-sensitive), e.g. "Breast Cancer"',
+        ),
+        sponsor: z.string().optional().describe(
+          'Case-insensitive substring of the LEAD sponsor name (collaborators are not searched)',
+        ),
+        status: z.enum(CT_STATUSES).optional().describe('ONE ClinicalTrials.gov overall status'),
+        dateField: z.enum(CT_DATE_FIELDS).optional().describe(
+          'Date column the from/to window applies to (default primary_completion_date)',
+        ),
+        from: z.string().optional().describe('Inclusive start: YYYY, YYYY-MM or YYYY-MM-DD'),
+        to: z.string().optional().describe(
+          'Inclusive end: YYYY, YYYY-MM or YYYY-MM-DD (a partial date covers its whole year/month)',
+        ),
+        sort: z.enum(CT_SORT_FIELDS).optional().describe('Sort column (default primary_completion_date)'),
         order: z.enum(['asc', 'desc']).optional().describe('Sort direction'),
         limit: z.number().min(1).max(100).optional().describe(
           'Maximum results to return (1-100, default: 50)',

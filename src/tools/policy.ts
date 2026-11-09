@@ -40,12 +40,12 @@ const LEADERBOARD_SORT = z.enum(['usd', 'count']);
  * asserts its presence on all three.
  */
 const OVERLAP_DISCLAIMER =
-  ' IMPORTANT: matches are sector-level co-occurrence — the official traded a stock in a ' +
-  'sector the executive order affects, within a window of its signing date. Sector matches ' +
-  'are broad and many trades will coincide with policy activity by chance; a match is a ' +
-  'starting point for research, not evidence of foreknowledge. The matchBasis field ' +
-  "describes match strength only ('sector' = broad sector match), never culpability, and " +
-  'matchCount shows how many EOs matched in the window (a noise indicator).';
+  ' Matches are sector-level co-occurrence: the official traded a stock in a sector the ' +
+  'executive order affects, within a window of its signing date. Sector matches are broad ' +
+  'and many trades coincide with policy activity by chance; a match is a starting point for ' +
+  'research, not evidence of foreknowledge. The matchBasis field describes match strength ' +
+  "only ('sector' = broad sector match), not culpability, and matchCount is how many EOs " +
+  'matched in the window (a noise indicator).';
 
 /**
  * Register Policy Event Overlap tools on the MCP server.
@@ -61,11 +61,11 @@ export function registerPolicyTools(server: McpServer, client: Signal8ApiClient)
     {
       title: 'Get Policy Events',
       description:
-        'List mirrored executive orders (policy events) from the Federal Register feed. ' +
-        'Filter by signing-date range, affected sector, or free-text title query. Each event ' +
-        'includes its Federal Register document number (externalId), title, signing date ' +
-        '(eventDate), normalized affected sectors, full-text URL, and flaggedTradeCount — the ' +
-        'number of official trades that occurred in an affected sector near the signing date.' +
+        'List mirrored executive orders (policy events) from the Federal Register feed. Filterable by ' +
+        'signing-date range, affected sector, or free-text title query. Each event includes its ' +
+        'Federal Register document number (externalId), title, signing date (eventDate), normalized ' +
+        'affected sectors, full-text URL, and flaggedTradeCount: the number of official trades that ' +
+        'occurred in an affected sector near the signing date.' +
         OVERLAP_DISCLAIMER,
       inputSchema: z.object({
         from: DATE_PATTERN().optional().describe(
@@ -104,18 +104,17 @@ export function registerPolicyTools(server: McpServer, client: Signal8ApiClient)
     {
       title: 'Get Policy-Trade Overlap',
       description:
-        'For a single politician, list trades that occurred within a window of days before ' +
-        'or after the signing of an executive order affecting the traded sector. Each row ' +
-        'contains the trade, the nearestEvent, daysDelta (negative = traded N days before EO ' +
-        'signing, positive = traded N days after), matchBasis, and matchCount, plus a summary ' +
-        '(totalFlags, totalEstimatedUsd, topSector). Defaults to trades 1-14 days BEFORE ' +
-        'signing; same-day trades are always excluded (intraday ordering is unknowable). ' +
-        'Executive-branch (exec-) slugs return REAL data here: both congressional and ' +
-        'executive trade sources feed the overlap computation.' +
+        'For a single politician, list trades that occurred within a window of days before or after ' +
+        'the signing of an executive order affecting the traded sector. Each row contains the trade, ' +
+        'the nearestEvent, daysDelta (negative = traded N days before EO signing, positive = traded N ' +
+        'days after), matchBasis, and matchCount, plus a summary (totalFlags, totalEstimatedUsd, ' +
+        'topSector). Defaults to trades 1-14 days before signing; same-day trades are always excluded ' +
+        '(intraday ordering is unknowable). Executive-branch (exec-) slugs return real data here: ' +
+        'both congressional and executive trade sources feed the overlap computation.' +
         OVERLAP_DISCLAIMER,
       inputSchema: z.object({
         slug: z.string().describe(
-          'Politician URL slug — congressional ("sen-nancy-pelosi", "rep-...") or ' +
+          'Politician URL slug: congressional ("sen-nancy-pelosi", "rep-...") or ' +
           'executive branch ("exec-...")',
         ),
         window: z.number().min(1).max(30).optional().describe(
@@ -154,16 +153,15 @@ export function registerPolicyTools(server: McpServer, client: Signal8ApiClient)
     {
       title: 'Get Policy-Trade Leaderboard',
       description:
-        'Rank politicians (Congress + executive branch) by trades that occurred near ' +
-        'executive-order signings in sectors the orders affect. Each row includes the ' +
-        'politician, flaggedTradeCount, totalEstimatedUsd, topSector, and an exampleEvent. ' +
-        'Use for "who trades most around policy activity" style questions. Defaults to the ' +
-        'same "traded 1-14 days before signing" lens as get_policy_trade_overlap; same-day ' +
-        'trades are always excluded.' +
+        'Rank politicians (Congress + executive branch) by trades that occurred near executive-order ' +
+        'signings in sectors the orders affect, i.e. who trades most around policy activity. Each row ' +
+        'includes the politician, flaggedTradeCount, totalEstimatedUsd, topSector, and an ' +
+        'exampleEvent. Defaults to the "traded 1-14 days before signing" lens; same-day trades are ' +
+        'always excluded.' +
         OVERLAP_DISCLAIMER,
       inputSchema: z.object({
         sort: LEADERBOARD_SORT.optional().describe(
-          "Ranking order: 'usd' (default — estimated USD value) or 'count' (flagged-trade count)",
+          "Ranking order: 'usd' (default, estimated USD value) or 'count' (flagged-trade count)",
         ),
         window: z.number().min(1).max(30).optional().describe(
           'Match window in days around the EO signing date (default: 14, max: 30)',

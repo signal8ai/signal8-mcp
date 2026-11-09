@@ -12,7 +12,6 @@ export interface AuthValidationResponse {
   valid: boolean;
   userId?: string;
   tier?: string;
-  creditsRemaining?: number;
 }
 
 /** Resolved user context after successful authentication */
@@ -83,10 +82,11 @@ export async function authenticateApiKey(apiKey: string): Promise<Signal8ApiClie
  * @param apiKey - Signal8 API key
  * @returns A configured Signal8ApiClient
  */
-export function createApiClient(apiKey: string): Signal8ApiClient {
+export function createApiClient(apiKey: string, brand?: string): Signal8ApiClient {
   return new Signal8ApiClient({
     baseUrl: getApiBaseUrl(),
     apiKey,
+    ...(brand ? { brand } : {}),
   });
 }
 

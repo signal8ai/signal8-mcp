@@ -56,15 +56,15 @@ export function registerInsiderPositionsTools(
     {
       title: 'Get Insider Positions by Ticker',
       description:
-        'Get per-insider position aggregates for a given ticker — which insiders hold ' +
-        'positions in the stock and their aggregate cost/value. Derived from Form 4 filings. ' +
-        'NOT LIFETIME: every figure covers only the Form 4 history Signal8 holds, which starts at ' +
-        'the response\'s `coverageStart` date (also repeated on each row) — say "since <coverageStart>", ' +
-        'never "lifetime" or "all-time". Each row carries `costBasisStatus`: `complete` (every share ' +
-        'the history knows was bought inside coverage), `partial` (the holding predates coverage, so ' +
-        '`weightedAvgCost` averages only in-coverage priced buys and is NOT the cost of the position), ' +
-        'or `unknown` (the first in-coverage event was a sale, or there was no priced buy — ' +
-        '`weightedAvgCost`/`costBasisTotal` are null, which means NOT MEASURED, never zero cost).',
+        'Get per-insider position aggregates for a ticker: which insiders hold positions in the stock and ' +
+        'their aggregate cost and value, derived from Form 4 filings. The figures are not lifetime ' +
+        'totals: they cover only the Form 4 history Signal8 holds, which starts at the response\'s ' +
+        '`coverageStart` date (repeated on each row), so every figure is "since coverageStart". Each row ' +
+        'carries `costBasisStatus`: `complete` (every share the history knows was bought inside ' +
+        'coverage), `partial` (the holding predates coverage, so `weightedAvgCost` averages only ' +
+        'in-coverage priced buys and is not the cost of the position), or `unknown` (the first ' +
+        'in-coverage event was a sale, or there was no priced buy; `weightedAvgCost` and `costBasisTotal` ' +
+        'are null, which means not measured, not zero cost).',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
       }),

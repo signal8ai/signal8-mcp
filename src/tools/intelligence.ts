@@ -17,7 +17,7 @@
  * - get_institution_filings: Institution 13F filing list (by CIK)
  * - get_institution_derivatives: Institution PUT/CALL derivative positions (by CIK)
  * - get_institution_portfolio_analytics: Institution sector allocation + top holdings (by CIK)
- * - get_institutions_discovery: Market-wide top-AUM + most-active institutions (no CIK)
+ * - get_institutions_leaderboards: Market-wide top-AUM + most-active institutions (no CIK)
  *
  * Cross-company intelligence (no ticker required):
  * - get_institution_top_aum: Top institutional holders by AUM across all companies
@@ -30,6 +30,7 @@ import { z } from 'zod/v3';
 import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Signal8ApiClient } from '../api-client.js';
 import { toolHandler } from './tool-handler.js';
+import { shapeClusterBuys } from './output-shaping.js';
 
 /**
  * Register intelligence-related tools on the MCP server.
@@ -115,27 +116,28 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
     {
       title: 'Get Comprehensive Ownership',
       description:
-        'Get unified ownership breakdown for a company combining Form 4 insider holdings, ' +
-        '13F institutional holdings, and 13D/13G activist positions. All entities are resolved ' +
-        'across the three SEC form types into a single view with counterparty resolution. ' +
-        'The allHolders array is paginated via limit/offset (default 100). Aggregate stats ' +
-        '(institutional/insider/beneficial totals and percentages, plus the `retail` residual) are always included in full. ' +
-        '`retail` is the UNATTRIBUTED residual: shares no filing accounts for, which includes recent offering buyers ' +
-        'and acquisition holders who have not filed as well as retail investors — an upper bound on retail, never a retail count. ' +
-        'When `retail.reason` is `filed_exceeds_outstanding` the residual is withheld (null) because the counted filings exceed the shares outstanding. ' +
-        '🔴 A bucket (`institutional` / `insider` / `beneficial`) whose shares exceed the shares outstanding by more than a 2% timing tolerance has its ' +
-        '`percentOfOutstanding` WITHHELD — null, with `percentWithheldReason: "ownership_exceeds_outstanding"` — and its `totalShares` still published: the ' +
-        'percent would not be a measurement (filings on another share basis such as ordinary shares against an ADS count, another class reported under this one, ' +
-        'shares lent and reported by both lender and buyer, or filings dated before a buyback or redemption). Report the share figure and the reason; NEVER present ' +
-        'such a bucket as 100%, as 0%, or as any percent. When any bucket is withheld, `retail.reason` is `ownership_exceeds_outstanding` and `filedSumPercent` is absent. ' +
-        'A null percent with NO `percentWithheldReason` means no share count was available — not measured for a different reason.' +
-        ' `sharesOutstanding` is the denominator of every percentage and is DATED: `sharesOutstandingAsOf` + `sharesOutstandingAsOfKind` ' +
-        '("stated" = the issuer\'s statement date; "checked" = when the figure was last confirmed against a vendor; "none" = date not recorded) ' +
-        'and `sharesOutstandingSource` (a vendor-free label). Never present a count without its date. ' +
-        '`beneficial.staleShares` / `stalePercentOfOutstanding` / `staleHolderCount` is a MEASURED SUBSET of the counted 5%+ total resting on ' +
-        '13D/G schedules >= 24 months old with no newer reaffirming filing by the same holder family — not a deduction; the total still includes it. ' +
-        'A row\'s `reaffirmedBy` names the newer family filing; `staleFiling.ageMonths` marks a counted row with none. `stalePercentOfOutstanding: null` ' +
-        'is not measurable (no share count), never zero.',
+        'Get the unified ownership breakdown for a company, combining Form 4 insider holdings, 13F ' +
+        'institutional holdings and 13D/13G activist positions, resolved across the three form types into ' +
+        'one view. allHolders is paginated via limit/offset (default 100); aggregate stats (institutional ' +
+        '/ insider / beneficial totals and percentages, plus `retail`) are always complete. ' +
+        '`sharesOutstanding`, the denominator of every percentage, is dated by `sharesOutstandingAsOf` + ' +
+        '`sharesOutstandingAsOfKind` ("stated" = issuer\'s statement date; "checked" = last confirmed ' +
+        'against a vendor; "none" = date not recorded) and `sharesOutstandingSource`; a count is only ' +
+        'meaningful with its date. `retail` is the unattributed residual (shares no filing accounts for, ' +
+        'including recent offering buyers and non-filing holders): an upper bound on retail, not a ' +
+        'retail count; withheld (null) with `retail.reason: "filed_exceeds_outstanding"` when counted ' +
+        'filings exceed shares outstanding. A bucket whose shares exceed shares outstanding by more ' +
+        'than a 2% timing tolerance has `percentOfOutstanding` withheld (null, `percentWithheldReason: ' +
+        '"ownership_exceeds_outstanding"`) with `totalShares` still published (e.g. another share basis ' +
+        'such as ordinary shares vs ADSs, another class, lent shares reported twice, filings predating a ' +
+        'buyback); the shares and the reason are the measurement, and the withheld percent is not 100%, ' +
+        '0% or any other percent. In that case `retail.reason` is `ownership_exceeds_outstanding` and ' +
+        '`filedSumPercent` is absent. A null percent with no `percentWithheldReason` means no share count ' +
+        'was available. `beneficial.staleShares` / `stalePercentOfOutstanding` / `staleHolderCount` is a ' +
+        'measured subset of the counted 5%+ total resting on 13D/G schedules >= 24 months old with no ' +
+        'newer reaffirming filing by the holder family: not a deduction. `reaffirmedBy` names the newer ' +
+        'filing; `staleFiling.ageMonths` marks a row with none. `stalePercentOfOutstanding: null` is not ' +
+        'measurable, not zero.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
         limit: z.number().int().min(1).max(100)
@@ -225,7 +227,7 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
       description:
         'Get detailed information about a specific institutional investor by their SEC CIK number. ' +
         'Returns the institution name, total AUM, number of holdings, and filing history. ' +
-        'Use get_institutions first to find the CIK for an institution.',
+        'Takes the institution\'s CIK.',
       inputSchema: z.object({
         cik: z.string().describe('SEC CIK number of the institution (e.g., "0001067983" for Berkshire Hathaway)'),
       }),
@@ -272,8 +274,7 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
         'Diff two quarterly 13F snapshots for an institution. Compares the latest filing ' +
         'against the prior quarter and returns per-position changes: new positions, increased, ' +
         'decreased, and exited. Sorted by |changePercent| descending so the biggest moves ' +
-        'surface first. Much more efficient than calling get_institution_holdings twice and ' +
-        'diffing client-side — the server computes everything in a single SQL query.',
+        'surface first. The diff is computed server-side in a single query.',
       inputSchema: z.object({
         cik: z.string().describe('SEC CIK number of the institution (e.g., "0001067983" for Berkshire Hathaway)'),
         limit: z.number().int().min(1).max(100).default(50).optional().describe(
@@ -352,7 +353,7 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
     {
       title: 'Get Institution Derivatives',
       description:
-        'Get an institution\'s reported PUT/CALL derivative positions by CIK (13F options), ' +
+        'Get an institution\'s reported put/call derivative positions by CIK (13F options), ' +
         'with pagination and sorting.',
       inputSchema: z.object({
         cik: z.string().describe('SEC CIK number of the institution'),
@@ -406,7 +407,7 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
       description:
         'Two market-wide institution leaderboards in one call: topByAum (largest holders by ' +
         'assets under management, name-deduped) and mostActive (highest 13F position-change ' +
-        'volume). No CIK required. For the full paginated AUM list use get_institution_top_aum.',
+        'volume). No CIK required. Each section is capped by `limit`; it is not the full paginated AUM list.',
       inputSchema: z.object({
         limit: z.number().min(1).max(50).optional().describe(
           'Maximum results per section (default: 10, max: 50)',
@@ -448,15 +449,13 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
       description:
         'Get detailed insider transaction history for a company from Form 4 filings. Returns individual ' +
         'buy/sell transactions with insider name, title, shares, price, and transaction codes. ' +
-        'Supports pagination for companies with extensive insider activity. Filter by year/month ' +
-        'to narrow results, or use transactionCode to find only purchases (P), sales (S), etc. ' +
-        'Useful for identifying "first insider buy since X" patterns. ' +
-        'IMPORTANT: each row\'s sharesOwnedFollowing is the holding on THAT row\'s ownership line only ' +
-        '(securityTitle + directOrIndirect + natureOfOwnership), NOT the insider\'s total position — insiders ' +
-        'often report several lines. holdingsByInsider lists every line with its as-of filing; its ' +
-        'sumOfReportedLines is not beneficial ownership (lines can be stale). Never compute a "% of position" ' +
-        'from one row; use 13D/13G totals, or omit the percentage. A trade re-reported in a later filing is ' +
-        'listed once.',
+        'Supports pagination for companies with extensive insider activity. Optional year/month ' +
+        'and transactionCode filters (purchases P, sales S, etc.) narrow results. ' +
+        'Each row\'s sharesOwnedFollowing is the holding on that row\'s ownership line only ' +
+        '(securityTitle + directOrIndirect + natureOfOwnership), not the insider\'s total position; insiders ' +
+        'often report several lines, so one row is not a basis for a "% of position" figure. ' +
+        'holdingsByInsider lists every line with its as-of filing; its sumOfReportedLines is not ' +
+        'beneficial ownership (lines can be stale). A trade re-reported in a later filing is listed once.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
         limit: z.number().min(1).max(100).optional().describe(
@@ -492,16 +491,29 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
     {
       title: 'Get Insider Cluster Buys',
       description:
-        'Detect cluster buying patterns for a company. Identifies periods where 3+ distinct insiders ' +
-        'purchased shares within a 14-day window -- a strong bullish signal that often precedes ' +
-        'positive corporate announcements or price appreciation.',
+        'Detect cluster buying for a company: periods where 3+ distinct insiders bought shares ' +
+        '(Form 4 open-market purchases, code P) within a 14-day window, over a lookback of 7, 30 or ' +
+        '90 days (default 90). Returns clusterBuyingDetected, the strongest clusterWindow, a summary ' +
+        '(totalValue is null when no purchase disclosed a price, and is a floor when ' +
+        'unpricedPurchaseCount > 0) and the deduped purchases. `asOf` and `lookback` state the ' +
+        'date range covered; clusterBuyingDetected false means none in that range only.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
+        days: z.union([z.literal(7), z.literal(30), z.literal(90)]).optional().describe(
+          'Lookback in days by transaction date: 7, 30 or 90 (default 90)',
+        ),
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ ticker }) =>
-      toolHandler(() => client.get(`/intelligence/${encodeURIComponent(ticker)}/cluster-buys`)),
+    async ({ ticker, days }) =>
+      toolHandler(async () =>
+        shapeClusterBuys(
+          await (days !== undefined
+            ? client.get(`/intelligence/${encodeURIComponent(ticker)}/cluster-buys`, { days: String(days) })
+            : client.get(`/intelligence/${encodeURIComponent(ticker)}/cluster-buys`)),
+          new Date(),
+        ),
+      ),
   );
 
   // ── Phase 4: Cross-Company Intelligence (no ticker required) ──
@@ -512,8 +524,7 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
       title: 'Get Top Institutions by AUM',
       description:
         'Discover top institutional holders across the entire company universe ranked by assets under ' +
-        'management (AUM). Unlike get_ownership which shows institutions for a single company, this tool ' +
-        'searches across all companies to find the largest institutional players. Optionally set a ' +
+        'management (AUM), across all companies rather than for a single company. Optionally set a ' +
         'minimum AUM. Useful for identifying smart money flows and major institutional positioning trends.',
       inputSchema: z.object({
         minAum: z.number().optional().describe(
@@ -545,8 +556,8 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
       title: 'Search Institutions by Name',
       description:
         'Search institutional investors (13F filers) by name. Returns matching institutions with CIK, ' +
-        'name, AUM, holdings count, and latest filing period. Use this to find a specific fund or ' +
-        'investment manager when you know part of their name (e.g., "Vanguard", "BlackRock", "Citadel"). ' +
+        'name, AUM, holdings count, and latest filing period. Matches part of a fund or ' +
+        'investment manager name (e.g., "Vanguard", "BlackRock", "Citadel"). ' +
         'Results are ranked by AUM descending.',
       inputSchema: z.object({
         q: z.string().min(2).describe(
@@ -579,8 +590,8 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
     {
       title: 'Get Cross-Company Legal Counsel',
       description:
-        'Find law firms and their engagements across multiple companies. Unlike get_counsel which shows ' +
-        'counsel for a single ticker, this tool searches the entire universe to discover which law firms ' +
+        'Find law firms and their engagements across multiple companies (the whole universe, not a ' +
+        'single ticker), showing which law firms ' +
         'are most active in specific roles (issuer counsel, underwriter counsel, etc.). Useful for ' +
         'identifying law firms frequently involved in dilutive transactions, shelf registrations, or ' +
         'ATM offerings across the market.',
@@ -617,9 +628,9 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
     {
       title: 'Get Cross-Company Insider Trading',
       description:
-        'Discover insider trading patterns across multiple companies. Unlike get_insiders which shows ' +
-        'insider activity for a single ticker, this tool searches the entire universe to find insiders ' +
-        'active across multiple companies, cluster buying patterns, and large transactions. Filter by ' +
+        'Discover insider trading patterns across multiple companies (the whole universe, not a ' +
+        'single ticker): insiders ' +
+        'active across multiple companies, cluster buying patterns, and large transactions. Optional filters: ' +
         'insider name, transaction type, or date range. Cluster buying is computed only for purchases ' +
         '(transactionType P, the default). Useful for detecting coordinated insider activity, ' +
         'cross-company insider networks, and market-wide buying/selling trends.',

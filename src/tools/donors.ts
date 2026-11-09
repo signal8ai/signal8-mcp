@@ -43,10 +43,9 @@ export function registerDonorTools(server: McpServer, client: Signal8ApiClient):
       title: 'Get Politician Donors',
       description:
         'Get the paginated list of campaign donors (individuals and PACs) for a single politician ' +
-        'across one election cycle. Returns donor name, amount, type, employer/occupation ' +
-        '(individuals), and committee details (PACs). Use this when a user asks "who donated to ' +
-        '<politician>" or wants the full donor list. For a quick top-10 + cycle totals overview, ' +
-        'use get_politician_donor_summary instead.',
+        'across one election cycle: the full donor list behind questions like "who donated to ' +
+        '<politician>". Returns donor name, amount, type, employer/occupation (individuals), and ' +
+        'committee details (PACs).',
       inputSchema: z.object({
         slug: z.string().describe('Politician URL slug (e.g., "sen-nancy-pelosi")'),
         cycle: CYCLE_PATTERN.optional().describe(
@@ -90,9 +89,9 @@ export function registerDonorTools(server: McpServer, client: Signal8ApiClient):
       title: 'Get Politician Donor Summary',
       description:
         'Get a bundled donor summary for a single politician: cycle totals (raised, spent, ' +
-        'cash-on-hand, debts), donor count, top 10 individual donors, and top 10 PAC donors — all ' +
-        'in one response. This is the right tool for "who funds <politician>" or "biggest donors ' +
-        'to <politician>" style questions. For the full paginated list, use get_politician_donors.',
+        'cash-on-hand, debts), donor count, top 10 individual donors, and top 10 PAC donors, all in ' +
+        'one response. Answers "who funds <politician>" or "biggest donors to <politician>" style ' +
+        'questions without paging the full donor list.',
       inputSchema: z.object({
         slug: z.string().describe('Politician URL slug (e.g., "sen-nancy-pelosi")'),
         cycle: CYCLE_PATTERN.optional().describe(
@@ -119,11 +118,10 @@ export function registerDonorTools(server: McpServer, client: Signal8ApiClient):
     {
       title: 'Get Donor Aggregates',
       description:
-        'Get market-wide campaign-finance rollups across ALL tracked politicians for a cycle: ' +
-        'total raised, top 10 individual donors, top 10 PACs, party/chamber/cycle splits, and a ' +
-        'most-funded politician leaderboard. Use for "who are the biggest donors in 2024?" or ' +
-        '"which party raised more?" type questions. For a single politician, use ' +
-        'get_politician_donor_summary.',
+        'Get market-wide campaign-finance rollups across every tracked politician for a cycle: total ' +
+        'raised, top 10 individual donors, top 10 PACs, party/chamber/cycle splits, and a most-funded ' +
+        'politician leaderboard. Answers questions like "who are the biggest donors in 2024?" or ' +
+        '"which party raised more?".',
       inputSchema: z.object({
         cycle: CYCLE_PATTERN.optional().describe(
           'Election cycle as 4-digit year (e.g. "2024"). Defaults to most recent cycle.',
@@ -151,15 +149,13 @@ export function registerDonorTools(server: McpServer, client: Signal8ApiClient):
     {
       title: 'Get Donor-Trade Overlap',
       description:
-        'For a single politician, find tickers where the politician (a) received campaign ' +
-        "donations from PACs/individuals affiliated with a company AND (b) traded that company's " +
-        "stock in the same cycle. Returns each overlap row with the donor, the politician's " +
-        'trades, and a confidence label. Use this for queries like "did Pelosi trade stocks of ' +
-        'her donors?" or "show me conflicts of interest between donors and trades for ' +
-        '<politician>". Executive-branch (exec-) slugs are supported: an official with no FEC ' +
-        "candidate record is matched on the FEC contributions linked to the official's slug " +
-        '(reverse lookup), so results there are often sparse. An empty list means no overlap ' +
-        'was found, not that the politician is unsupported.',
+        'For a single politician, find tickers where the politician (a) received campaign donations ' +
+        'from PACs/individuals affiliated with a company and (b) traded that company\'s stock in the ' +
+        'same cycle. Returns each overlap row with the donor, the politician\'s trades, and a ' +
+        'confidence label (e.g. for "did Pelosi trade stocks of her donors?"). Executive-branch ' +
+        '(exec-) slugs are supported: an official with no FEC candidate record is matched on the FEC ' +
+        'contributions linked to the official\'s slug (reverse lookup), so results there are often ' +
+        'sparse. An empty list means no overlap was found, not that the politician is unsupported.',
       inputSchema: z.object({
         slug: z.string().describe('Politician URL slug (e.g., "sen-nancy-pelosi")'),
         cycle: CYCLE_PATTERN.optional().describe(

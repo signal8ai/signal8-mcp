@@ -170,9 +170,10 @@ describe('get_politician_scorecard (@CongressScanner weekly card)', () => {
     expect(tool).toBeDefined();
     expect(tool.config.annotations?.readOnlyHint).toBe(true);
     const d = String(tool.config.description);
-    expect(d).toMatch(/ESTIMATES/);
+    expect(d).toMatch(/All P&L figures are estimates/);
     expect(d).toContain('±25–40%');
-    expect(d).toContain('NOT lifetime P&L');
+    expect(d).toContain('not lifetime P&L');
+    expect(d).toContain('not measured and not 0%');
     expect(d).toContain('imageUrl');
   });
 

@@ -38,13 +38,15 @@ describe('market tools', () => {
   });
 
   // The batch/universe/snapshot/top-performers tools were block-commented out
-  // in the 2026-06-13 market-data licensing review; only these three actually
-  // register. get_trading_halts was added in task-2286 (feature-2260).
-  it('registers the 3 active market tools', () => {
+  // in the 2026-06-13 market-data licensing review; only these four actually
+  // register. get_trading_halts was added in task-2286 (feature-2260), and
+  // get_market_news with the public market-wide news endpoint.
+  it('registers the 4 active market tools', () => {
     expect(server.tools.map((t) => t.name).sort()).toEqual(
       [
         'get_top_movers',
         'get_market_breadth',
+        'get_market_news',
         'get_trading_halts',
       ].sort(),
     );
@@ -234,17 +236,37 @@ describe('market tools', () => {
     expect(result.structuredContent.data.data.halts).toEqual([]);
   });
 
-  it('get_trading_halts passes halt rows through untouched (no response mapping)', async () => {
+  it('get_trading_halts keeps every API field on a recent halt row and adds haltAgeDays + asOf', async () => {
     const row = {
       ticker: 'INHD',
       market: 'NASDAQ',
       haltCode: 'T12',
       reason: 'Additional information requested by NASDAQ',
-      haltedAt: '2026-06-30T13:30:00.000Z',
+      haltedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
       resumptionAt: null,
     };
     client.get.mockResolvedValue({ success: true, data: { halts: [row], count: 1 } });
     const result = await toolMap.get('get_trading_halts')!.handler({});
-    expect(result.structuredContent.data.data.halts[0]).toMatchObject(row);
+    const data = result.structuredContent.data.data;
+    expect(data.halts[0]).toMatchObject(row);
+    expect(data.halts[0].longRunning).toBe(false);
+    expect(typeof data.halts[0].haltAgeDays).toBe('number');
+    expect(typeof data.asOf).toBe('string');
+    expect(data.count).toBe(1);
+  });
+
+  it('get_trading_halts moves a years-old halt out of `halts` into longRunningHalts', async () => {
+    const old = {
+      ticker: 'SVA', market: 'NASDAQ', haltCode: 'T12', reason: null,
+      haltedAt: '2019-02-01T14:00:00.000Z', resumptionAt: null,
+    };
+    client.get.mockResolvedValue({ success: true, data: { halts: [old], count: 1 } });
+    const result = await toolMap.get('get_trading_halts')!.handler({});
+    const data = result.structuredContent.data.data;
+    expect(data.halts).toEqual([]);
+    expect(data.count).toBe(0);
+    expect(data.longRunningCount).toBe(1);
+    expect(data.longRunningHalts[0]).toMatchObject({ ticker: 'SVA', longRunning: true });
+    expect(data.longRunningHalts[0].haltAgeDays).toBeGreaterThan(365);
   });
 });

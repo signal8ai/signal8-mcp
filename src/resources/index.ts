@@ -105,7 +105,7 @@ export function registerAllResources(server: McpServer, client: Signal8ApiClient
         return {
           contents: [{
             uri: uri.href,
-            text: JSON.stringify(data, null, 2),
+            text: JSON.stringify(data),
           }],
         };
       } catch {
@@ -148,7 +148,7 @@ export function registerAllResources(server: McpServer, client: Signal8ApiClient
             { id: 'shares', description: 'Share structure, authorized/outstanding/issued' },
             { id: 'cash-flow', description: 'Cash flow from operations, financing, investing' },
           ],
-        }, null, 2),
+        }),
       }],
     }),
   );
@@ -168,7 +168,7 @@ export function registerAllResources(server: McpServer, client: Signal8ApiClient
     async (uri) => {
       try {
         const res = await client.get<Envelope<unknown>>('/learn');
-        return { contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify(res.data, null, 2) }] };
+        return { contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify(res.data) }] };
       } catch (error) {
         return { contents: [{ uri: uri.href, mimeType: 'application/json', text: errorText(error, 'Academy index unavailable') }] };
       }

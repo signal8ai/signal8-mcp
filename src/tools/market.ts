@@ -22,6 +22,7 @@ import { z } from 'zod/v3';
 import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Signal8ApiClient } from '../api-client.js';
 import { toolHandler } from './tool-handler.js';
+import { LONG_RUNNING_HALT_DAYS, shapeTradingHalts } from './output-shaping.js';
 
 /**
  * Major market index ETFs returned by get_index_snapshot.
@@ -127,14 +128,14 @@ export function registerMarketTools(server: McpServer, client: Signal8ApiClient)
     {
       title: 'Get Top Market Movers',
       description:
-        'Top stock movers — gainers (largest % up), losers (largest % down), or active ' +
+        'Top stock movers: gainers (largest % up), losers (largest % down), or active ' +
         '(highest volume). Optional session window (premarket / regular / afterhours; ' +
-        'regular default; not supported for active). Optional date (YYYY-MM-DD) returns a ' +
-        "PAST trade date's gainers/losers on a historical daily close-to-close basis " +
-        '(computed from split-adjusted daily bars, NOT intraday) — session is rejected ' +
+        'regular default; not supported for active). An optional date (YYYY-MM-DD) returns a ' +
+        "past trade date's gainers/losers on a historical daily close-to-close basis " +
+        '(computed from split-adjusted daily bars, not intraday); session is rejected ' +
         'when date is set, date is not supported for direction=active, and a non-trade ' +
         'date (weekend/holiday) returns an empty list (not an error). Penny-stock ' +
-        'artifacts are filtered by default — set includePennyStocks to include sub-$1 movers.',
+        'artifacts are filtered by default; includePennyStocks=true includes sub-$1 movers.',
       inputSchema: z.object({
         direction: z
           .enum(['gainers', 'losers', 'active'])
@@ -151,7 +152,7 @@ export function registerMarketTools(server: McpServer, client: Signal8ApiClient)
           .default('regular')
           .describe(
             'Session window: premarket (4:00–9:30 AM ET), regular (RTH close-to-close, ' +
-              'default), afterhours (4:00–8:00 PM ET). Live-only — rejected (400) when ' +
+              'default), afterhours (4:00–8:00 PM ET). Live-only; rejected (400) when ' +
               'combined with date.',
           ),
         includePennyStocks: z
@@ -202,12 +203,11 @@ export function registerMarketTools(server: McpServer, client: Signal8ApiClient)
     {
       title: 'Get Market News (Top Stories)',
       description:
-        'Get the latest market-wide news across ALL tickers, most recent first. ' +
-        'Every item is significance-classified at ingest (critical | major | standard); ' +
-        'the default filter of critical,major is the "top stories" view. Use for ' +
-        '"what is happening in the market right now" — for news about one company, ' +
-        'use get_news with a ticker instead. Requires the /news/latest public ' +
-        'endpoint (added 2026-07-29; 404 until that backend deploy).',
+        'Get the latest market-wide news across all tickers, most recent first ' +
+        '(not filtered to one company). Every item is significance-classified at ingest ' +
+        '(critical | major | standard); the default filter of critical,major is the ' +
+        '"top stories" view. Served by the /news/latest public endpoint (added 2026-07-29; ' +
+        '404 on a backend without it).',
       inputSchema: z.object({
         limit: z.number().int().min(1).max(50).optional()
           .describe('Maximum items to return (1-50). Defaults to 10.'),
@@ -233,8 +233,8 @@ export function registerMarketTools(server: McpServer, client: Signal8ApiClient)
       description:
         'Get market breadth aggregates (advance/decline counts and ratio, ' +
         'percent of constituents above their 50DMA and 200DMA, and counts of ' +
-        'new 52-week highs/lows) for a chosen universe (sp500, ndx, or all). ' +
-        'Use to add market-state context to commentary, tweets, or daily summaries.',
+        'new 52-week highs/lows) for a chosen universe (sp500, ndx, or all): a ' +
+        'snapshot of overall market state.',
       inputSchema: z.object({
         universe: z
           .enum(['sp500', 'ndx', 'all'])
@@ -257,16 +257,19 @@ export function registerMarketTools(server: McpServer, client: Signal8ApiClient)
     {
       title: 'Get Active Trading Halts',
       description:
-        'List currently-active trading halts across NASDAQ/NYSE/AMEX (from the ' +
-        'consolidated Nasdaq Trader halt feed). Each halt includes ticker, market, ' +
-        'haltCode (T1/T2/T12/LUDP/H10/...), human-readable reason, haltedAt, and the ' +
-        'scheduled resumptionAt when one is set. An EMPTY list is a normal state ' +
-        '(no active halts right now), not an error. Halts are tradeable catalysts — ' +
-        'use this to discover halted names, then get_quote for the frozen last price.',
+        'List securities currently halted across NASDAQ/NYSE/AMEX (from the consolidated ' +
+        'Nasdaq Trader halt feed). Each halt includes ticker, market, haltCode ' +
+        '(T1/T2/T12/LUDP/H10/...), human-readable reason, haltedAt, haltAgeDays, and the ' +
+        'scheduled resumptionAt when one is set. `halts` holds halts that began within the ' +
+        `last ${LONG_RUNNING_HALT_DAYS} days; \`longRunningHalts\` holds older halts the feed still lists ` +
+        '(often regulatory halts that have lasted months or years); they are not new halts. ' +
+        '`asOf` is when the list was read. An empty list is a normal state (no active ' +
+        'halts right now), not an error. Halt rows carry no price.',
       inputSchema: z.object({}),
       annotations: { readOnlyHint: true },
     },
-    async () => toolHandler(() => client.get('/trading-halts')),
+    async () =>
+      toolHandler(async () => shapeTradingHalts(await client.get('/trading-halts'), new Date())),
   );
 
   // DISABLED (licensing review 2026-06-13): price-change/index-constituents (market

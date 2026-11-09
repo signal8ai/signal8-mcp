@@ -32,3 +32,15 @@ export {
   type AuthContext,
   type AuthValidationResponse,
 } from './auth.js';
+export {
+  BRANDS,
+  DILUTIONSCAN_BRAND,
+  DILUTIONSCAN_TOOLS,
+  SIGNAL8_BRAND,
+  SPLITSCANNER_BRAND,
+  SPLITSCANNER_TOOLS,
+  resolveBrand,
+  type BrandId,
+  type McpBrand,
+} from './brand.js';
+export { createProGate, type EntitlementResponse, type ProGate } from './pro-gate.js';

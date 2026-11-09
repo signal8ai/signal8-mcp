@@ -136,7 +136,7 @@ export function registerCalendarTools(server: McpServer, client: Signal8ApiClien
       title: 'Get IPO Lockup Expirations',
       description:
         'Get upcoming IPO/secondary lockup expirations within a date window. Lockup ' +
-        'dates are derived from underwriting-terms extractions (S-1/F-1/424B*) — ' +
+        'dates are derived from underwriting-terms extractions (S-1/F-1/424B*); ' +
         'coverage is partial. Useful for anticipating insider supply unlocks.',
       inputSchema: z.object({
         from: isoDate().optional().describe('Start date inclusive (YYYY-MM-DD, default today)'),
@@ -167,9 +167,8 @@ export function registerCalendarTools(server: McpServer, client: Signal8ApiClien
       title: 'Get Post-Earnings Movers',
       description:
         'Get stocks that moved significantly after earnings reports on a given date. ' +
-        'Returns pre-computed price changes with earnings surprise data in a single ' +
-        'call — no need to chain get_earnings_calendar + get_historical_prices + ' +
-        'get_quote per ticker. Includes preEarningsClose, currentPrice, changePct, ' +
+        'Returns pre-computed price changes joined with earnings surprise data, one ' +
+        'row per ticker. Includes preEarningsClose, currentPrice, changePct, ' +
         'EPS/revenue actuals vs estimates, and surprise percentages. Filter by ' +
         'minimum absolute % change threshold.',
       inputSchema: z.object({

@@ -30,27 +30,26 @@ export function registerPremarketTools(server: McpServer, client: Signal8ApiClie
       title: 'Get RVOL History',
       description:
         'Get the per-day relative-volume (RVOL) time series for a ticker, bucketed by ' +
-        'trading session (premarket 04:00–09:30 ET, regular 09:30–16:00, afterhours ' +
-        "16:00–20:00, or all four). Each day's RVOL compares that session's volume to a " +
-        'trailing same-session baseline (30 trading days by default — configurable via '
-        + '"baselineDays"), so premarket volume is judged against ' +
-        'premarket history (not a stale full-day figure). Use for spotting unusual ' +
-        'premarket / session volume surges over the last N days. Each point also carries ' +
-        '"baselineState" — "ready" (rvol is populated), "warming" (baseline not yet warm), ' +
-        '"no-cutoff-history" (established ticker that never traded at this session/cutoff ' +
-        'before) or "no-history" (new listing, no prior trading history at all) — so a null ' +
-        'rvol is explained rather than silent. Points additionally carry "advRatio" (that ' +
-        "day's volume ÷ the trailing 30-session average FULL-DAY volume, null when no " +
-        'full-day denominator exists) and "advDays" (its sample size), which give a magnitude ' +
-        'to points RVOL cannot rate. advRatio is NOT an RVOL — it compares a partial session ' +
-        'to a whole day, so it is typically well under 1 and must not be compared to rvol. ' +
-        'Charged per your API tier.',
+        'trading session (premarket 04:00-09:30 ET, regular 09:30-16:00, afterhours ' +
+        "16:00-20:00, or all four). Each day's RVOL compares that session's volume to a " +
+        'trailing same-session baseline (30 trading days by default, configurable via ' +
+        '"baselineDays"), so premarket volume is judged against premarket history (not a ' +
+        'stale full-day figure); the series shows unusual premarket / session volume surges ' +
+        'over the last N days. Each point also carries "baselineState": "ready" (rvol is ' +
+        'populated), "warming" (baseline not yet warm), "no-cutoff-history" (established ' +
+        'ticker that never traded at this session/cutoff before) or "no-history" (new ' +
+        'listing, no prior trading history at all), so a null rvol is explained rather than ' +
+        'silent. Points additionally carry "advRatio" (that day\'s volume / the trailing ' +
+        '30-session average full-day volume, null when no full-day denominator exists) and ' +
+        '"advDays" (its sample size), which give a magnitude to points RVOL cannot rate. ' +
+        'advRatio is not an RVOL: it compares a partial session to a whole day, so it is ' +
+        'typically well under 1 and is not comparable to rvol.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
         session: z
           .enum(['premarket', 'regular', 'afterhours', 'all'])
           .optional()
-          .describe('Restrict to one session bucket; omit to return all four sessions.'),
+          .describe('One session bucket; unset returns all four sessions.'),
         days: z
           .number()
           .int()
@@ -63,14 +62,14 @@ export function registerPremarketTools(server: McpServer, client: Signal8ApiClie
           .regex(/^\d{2}:\d{2}$/, 'asOfTime must be HH:MM (24h ET)')
           .optional()
           .describe(
-            'Optional TRUE time-of-day premarket basis. Any HH:MM ET premarket time; ' +
+            'Optional true time-of-day premarket basis. Any HH:MM ET premarket time; ' +
               'snapped to the nearest 15-minute grid cutoff (04:00–09:15, ties resolve to ' +
-              'the earlier cutoff). When set, the series is the PREMARKET as-of RVOL: ' +
-              'cumulative volume known BY that cutoff ÷ the trailing baselineDays (default 30) ' +
-              'average of the SAME cutoff (not the full 04:00–09:30 session). Forces the premarket session — ' +
+              'the earlier cutoff). When set, the series is the premarket as-of RVOL: ' +
+              'cumulative volume known by that cutoff / the trailing baselineDays (default 30) ' +
+              'average of the same cutoff (not the full 04:00-09:30 session). Forces the premarket session; ' +
               'any "session" argument is ignored. Each point carries a "basis" field: the ' +
               'snapped cutoff actually used ("asof-0700"), or "full-session" for dates with ' +
-              'no precomputed as-of row. Omit for the standard full-session series.',
+              'no precomputed as-of row. Unset means the standard full-session series.',
           ),
         baselineDays: z
           .number()
@@ -88,8 +87,8 @@ export function registerPremarketTools(server: McpServer, client: Signal8ApiClie
               'warm-up lookback scales with it automatically, so a wide window is never ' +
               'under-filled into an inflated ratio; the minimum-warm-days gate (20 prior ' +
               'sessions) does NOT scale down, so at the 30-row default a ticker needs ' +
-              '20 of its last 30 sessions populated before rvol is non-null. Omit for ' +
-              'the standard 30-day baseline; pass 90 for the pre-2026-09 window.',
+              '20 of its last 30 sessions populated before rvol is non-null. Unset means ' +
+              'the standard 30-day baseline; 90 reproduces the pre-2026-09 window.',
           ),
       }),
       annotations: { readOnlyHint: true },
@@ -112,37 +111,27 @@ export function registerPremarketTools(server: McpServer, client: Signal8ApiClie
     {
       title: 'Get Premarket Scanner',
       description:
-        'Get the live premarket scanner board — the top premarket gainers and losers by ' +
-        'absolute gap %, each row enriched with rvol, marketCap, floatShares (the measured POINT float, null on a ' +
-        'withheld dilution-snapshot row — such a row then carries "floatEstimate" {shares, bound: "point" | ' +
-        '"ceiling" | "floor", basis}. RENDERING (2026-10-18): a "point" is printed as the plain number with its as-of and ' +
-        'caveat; a "ceiling" / "floor" is a BOUND, not a figure — say "float not stated (at most / at least N)" and never ' +
-        'the bare number, never a "~" / "<=" / ">=" glyph, never arithmetic; neither present = not measured, never 0. The ' +
-        'low-float board admits on that figure\'s VALUE: an 8M ceiling is in, a 26M floor or a 27M estimate is out), short ' +
-        'interest, dilution, and news/catalyst flags. Listing-compliance data (row "compliance", the ' +
-        'compliance/split badges, "reverseSplitSignal", "deficiencySignal") is Signal8 Pro: for any other caller ' +
-        '"compliance" is null with "complianceWithheld": "pro_required" — WITHHELD, which is not "not measured" and ' +
-        'never "no deficiency". Off-hours it falls back to the last ' +
-        'session. Use for premarket small-cap runner discovery. Set includePennyStocks=true ' +
-        'to include sub-$1 names (separate cache slot). ' +
-        'During the 04:00–09:30 ET premarket window rows also carry two LIVE volume ' +
-        'metrics off the same live cumulative-volume numerator — they are DIFFERENT ' +
-        'quantities and must not be substituted for each other or for "rvol": ' +
-        '"liveRvol" = live cumulative premarket volume ÷ the trailing 30-session average ' +
-        'cumulative volume AT THE SAME TIME OF MORNING (answers "is it busy for 08:00?"), ' +
-        'with "liveRvolAsOf" giving the 15-minute ET grid cutoff that baseline came from — ' +
-        'compare it to meta.asOf (when the live volume was sampled) to judge the small ' +
-        'numerator/denominator time skew; and "premarketPaceRatio" = the same live volume ' +
-        '÷ the trailing 30-session average FULL premarket session (answers "what fraction ' +
-        'of a typical entire premarket has it already done?", >1.0 = it already beat a ' +
-        'normal premarket before the open). Both are null outside the premarket window or ' +
-        'until the baseline is warm — never a fabricated ratio. ' +
-        'Set universe="lowfloat" for the separate LOW-FLOAT board (float under 10M shares, ' +
-        'no top-100 slice) instead of the default movers-derived board; that board is ' +
-        'served from the aggregator snapshot and returns an empty rows array with a ' +
-        'meta.reason when no snapshot is currently published (a normal off-hours state, ' +
-        'not an error). ' +
-        'Charged per your API tier.',
+        'Get the live premarket scanner board (premarket small-cap runners): top premarket gainers ' +
+        'and losers by absolute gap %, each row enriched with rvol, marketCap, floatShares, short ' +
+        'interest, dilution and news/catalyst flags. Off-hours it falls back to the last session. ' +
+        'includePennyStocks=true includes sub-$1 names. Float: floatShares is the measured point ' +
+        'float (null on a withheld dilution-snapshot row, which then carries "floatEstimate" ' +
+        '{shares, bound: "point" | "ceiling" | "floor", basis}). A point estimate is a number with ' +
+        'its as-of and caveat; a ceiling or floor is a bound, not a figure: the float is not stated ' +
+        'and is at most (ceiling) or at least (floor) that number, and is not a basis for ' +
+        'arithmetic; neither present = not measured, not 0. The low-float board admits on that ' +
+        'figure\'s value (an 8M ceiling is in, a 26M floor is out). Compliance: row "compliance", ' +
+        'the compliance/split badges, "reverseSplitSignal" and "deficiencySignal" are Signal8 Pro; ' +
+        'for other callers "compliance" is null with "complianceWithheld": "pro_required", meaning ' +
+        'withheld, which is not "not measured" and not "no deficiency". Live volume (04:00-09:30 ET ' +
+        'only; null outside the window or until the baseline is warm, never fabricated) has two ' +
+        'different metrics, neither interchangeable with the other or with "rvol". "liveRvol" = live ' +
+        'cumulative premarket volume / the trailing 30-session average cumulative volume at the same ' +
+        'time of morning, with "liveRvolAsOf" the 15-minute grid cutoff (meta.asOf shows any time ' +
+        'skew); "premarketPaceRatio" = the same volume / the trailing 30-session average full ' +
+        'premarket session (>1.0 = already beat a normal premarket). universe="lowfloat" returns the ' +
+        'separate low-float board (float under 10M, no top-100 slice) from the aggregator snapshot; ' +
+        'an empty rows array with meta.reason when none is published is a normal off-hours state.',
       inputSchema: z.object({
         includePennyStocks: z
           .boolean()

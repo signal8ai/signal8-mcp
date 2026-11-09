@@ -37,13 +37,14 @@ describe('calendar tools', () => {
     toolMap = new Map(server.tools.map((t) => [t.name, t]));
   });
 
-  it('registers all 6 calendar tools', () => {
+  // get_lockup_expirations is DISABLED in calendar.ts (derived from the
+  // deprecated underwriting-terms data), so only these five register.
+  it('registers the 5 active calendar tools', () => {
     expect(server.tools.map((t) => t.name).sort()).toEqual(
       [
         'get_earnings_calendar',
         'get_economic_calendar',
         'get_filing_calendar',
-        'get_lockup_expirations',
         'get_post_earnings_movers',
         'get_recent_material_filings',
       ].sort(),
@@ -160,24 +161,6 @@ describe('calendar tools', () => {
     expect(schema.safeParse({ universe: 'russell' }).success).toBe(false);
     expect(schema.safeParse({ universe: 'all', formTypes: ['10-K'] }).success).toBe(true);
     expect(schema.safeParse({}).success).toBe(true);
-  });
-
-  /* ── get_lockup_expirations ───────────────────────────────── */
-
-  it('get_lockup_expirations GETs /public/calendar/lockup-expirations', async () => {
-    const tool = toolMap.get('get_lockup_expirations')!;
-    await tool.handler({ from: '2026-05-01', to: '2026-08-01', universe: 'all' });
-    expect(client.get).toHaveBeenCalledWith('/calendar/lockup-expirations', {
-      from: '2026-05-01',
-      to: '2026-08-01',
-      universe: 'all',
-    });
-  });
-
-  it('get_lockup_expirations omits all params when none provided', async () => {
-    const tool = toolMap.get('get_lockup_expirations')!;
-    await tool.handler({});
-    expect(client.get).toHaveBeenCalledWith('/calendar/lockup-expirations', {});
   });
 
   /* ── get_recent_material_filings ──────────────────────────── */

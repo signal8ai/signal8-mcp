@@ -26,11 +26,10 @@ export function registerIntradayTools(server: McpServer, client: Signal8ApiClien
     {
       title: 'Get Intraday Price Bars',
       description:
-        'Get intraday OHLCV candles at 1, 5, 15, 30, or 60-minute resolution. ' +
-        'Use for intraday price action analysis, volume patterns, and short-term ' +
-        'technical analysis. Returns open, high, low, close, and volume for each bar. ' +
-        'Set extended=true (1-minute resolution only) to include premarket ' +
-        '(04:00–09:30 ET) and after-hours (16:00–20:00 ET) bars.',
+        'Get intraday OHLCV candles at 1, 5, 15, 30 or 60-minute resolution for intraday price action, ' +
+        'volume patterns and short-term technical analysis. Each bar has open, high, low, close and ' +
+        'volume. `extended: true` includes premarket (04:00 to 09:30 ET) and after-hours (16:00 to 20:00 ' +
+        'ET) bars.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
         resolution: z
@@ -43,7 +42,7 @@ export function registerIntradayTools(server: McpServer, client: Signal8ApiClien
           .optional()
           .describe(
             'Include extended-hours bars (premarket 04:00–09:30 ET and after-hours ' +
-            '16:00–20:00 ET). Only supported with resolution "1".',
+            '16:00–20:00 ET). Works at every resolution; bars are anchored at 04:00 ET.',
           ),
       }),
       annotations: { readOnlyHint: true },
@@ -67,10 +66,9 @@ export function registerIntradayTools(server: McpServer, client: Signal8ApiClien
     {
       title: 'Get Volume Profile',
       description:
-        'Get volume distribution across price levels for a single trading day. ' +
-        'Returns price buckets with volume, Point of Control (highest volume level), ' +
-        'and Value Area (price range containing 70% of volume). Use for identifying ' +
-        'support/resistance and high-volume price nodes.',
+        'Get the volume distribution across price levels for a single trading day: price buckets with ' +
+        'volume, the Point of Control (highest-volume level) and the Value Area (the price range ' +
+        'containing 70% of volume), which locate support, resistance and high-volume price nodes.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
         date: z
@@ -102,11 +100,10 @@ export function registerIntradayTools(server: McpServer, client: Signal8ApiClien
     {
       title: 'Get Accumulation Snapshot',
       description:
-        'Get intraday accumulation/distribution metrics for the current or most ' +
-        'recent trading session. Returns session VWAP, volume above/below VWAP, ' +
-        'estimated buy vs sell volume (tick rule), volume by time period ' +
-        '(morning/midday/afternoon), and comparison to average volume. Use for ' +
-        'assessing real-time buying/selling pressure.',
+        'Get intraday accumulation/distribution metrics for the current or most recent trading session: ' +
+        'session VWAP, volume above and below VWAP, estimated buy vs sell volume (tick rule), volume by ' +
+        'time period (morning/midday/afternoon) and comparison to average volume, as a measure of ' +
+        'real-time buying and selling pressure.',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol'),
       }),

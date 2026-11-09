@@ -7,6 +7,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-09
+
+### Changed
+
+- **`get_politician_late_filers`** description (2026-11-03): states late filings as a fact
+  about the dates on the report (disclosed more than 45 days after the trade) and no longer
+  calls them violations. Behaviour and response shape are unchanged.
+
+### Added
+
+- **`get_ended_reverse_splits({ outcome, from, to, exchange, limit, cursor })`** and
+  **`get_reverse_split_authority({ minRemaining, expiringBefore, exchange, limit, cursor })`**
+  (2026-11-03): two cross-company screens over the SEC-filing tracker. Ended = episodes
+  that ended without the split taking effect (`vote_failed`, `abandoned`,
+  `authority_expired`, `postponed_indefinitely`), newest first, each with `endedOn` and
+  the basis of that date, the tracker's closing note and the closing filing. Authority =
+  one row per company whose board still holds an approval it may use without another vote,
+  with the approved ratio or range, cumulative cap, expiry, approval route and `room`:
+  used vs remaining from the same terms the company panel shows (ratios combine by
+  product). A remaining room the documents do not let us compute is null WITH a reason,
+  never "none remaining", and the row is listed. Rows carry every source document. Same
+  gates as the Reverse Splits page tracker tabs, per-row Pro lock from the key owner
+  (`/api/v1/public/reverse-splits/ended` and `/authority`), cursor paging.
+- **`get_split_performance({ ticker, windowDays, limit })`** (2026-11-03): how one
+  ticker's price moved in the N calendar days (default 30, max 365) after EACH stock
+  split it already executed, newest first, up to 30 splits, in one call. Per split:
+  ratio, kind, first post-split close and window-end close as traded, % from the
+  first post-split close and from the last pre-split close (moved onto the post-split
+  basis by the split ratio), and the lowest low / highest high vs the first close.
+  The response states its `basis` (each row on that split's own post-split basis, not
+  today's). Null = not measured (missing or refused bar, or a window that reaches a
+  later split), with a `notMeasured` reason per field; never 0. Signal8 Pro: the same
+  tier key as Octo's chat (`tools_ai_research`), read from the API key owner's
+  effective tier; a sandbox key does not unlock it. Backed by
+  `GET /api/v1/public/splits/:ticker/performance`, which shares its SQL with Octo's
+  `s8_get_split_performance`.
+- **`get_reverse_splits_list({ view, limit, offset, cap, type, exchange, board, domicile })`**
+  (2026-11-02) — the cross-company lists the Signal8 Reverse Splits page serves, one
+  view per call: `upcoming` (effective tomorrow through 30 market days ahead; the vendor
+  calendar UNION the SEC-filing tracker, one row per security), `recent` (past 30 days),
+  `approved_no_date` (approved, no effective date stated yet), `vote_pending` (proposed;
+  the shareholder vote has not happened) and `cancelled` (2026-11-09: tracked proposals
+  that ended without the split taking effect in the past 90 days, withdrawn, vote failed,
+  not approved, authority expired or postponed indefinitely, each with a `cancelled`
+  object: outcome, label, end date and its basis, and any newer open proposal). Rows carry the stage, tracker state, ratio or
+  range, meeting / approved / effective dates, `effectiveDateSource`,
+  `marketCalendarAgrees`, the source filings and documents, verification, cap / type /
+  venue, `approvalPath`, `domicile`, `splitAuthority` and `authorityTerms` (a cumulative
+  cap lets the board split in steps without a new vote until the authority expires).
+  Null = not measured, never "no split"; a deadline is never an effective date. The split
+  facts are Signal8 Pro: a key not owned by a Pro account gets every row `locked: true`
+  with only the company on it (`access: "preview"`, `lockedCount`) — withheld, not absent.
+  Backed by the new `/api/v1/public/reverse-splits` mount, which applies the page's own
+  per-row tier gate from the key owner's effective tier (a sandbox key does not unlock
+  rows). `get_upcoming_reverse_splits` is unchanged (vendor calendar only) and its
+  description now says so and names this tool.
+- **`get_reverse_split_lifecycle(ticker)`** — the reverse-split lifecycle Signal8
+  tracks from the company's own SEC filings: episodes (proposed → vote → approved
+  → ratio / date → charter filed, or closed), dates, ratio or authorised range,
+  and every fact with its verbatim quote and EDGAR source. Not stated = not
+  measured; `coverage: "unresolved"` = not matched to a registrant; an empty
+  list is not "no split"; `effectiveDate` is the issuer-stated, scheduled date.
+- **Approval path, domicile and split authority on `get_reverse_split_lifecycle`**
+  (when `approvalAvailable`): per-episode `approvalPath` (shareholder vote / written
+  consent / board only / pre-approved range / unknown, with the verbatim quote),
+  `domicile` (null = not measured) and `splitAuthority` with its `basis`. Only an own
+  prior board-only filing or a charter clause means the board can split without a
+  vote; `unknown` / `domicile_default_only` is not a finding. Since 2026-11-02
+  these fields are part of every successful response (`approvalAvailable: true`);
+  the flag is kept so older clients keep working.
+- **`includeLifecycle` on `get_upcoming_reverse_splits`** — attaches the tracked
+  episode per row (`null` = not tracked; missing key = unresolved) with
+  `lifecycleAvailable`.
+- **`days` (7 / 30 / 90) on `get_insider_cluster_buys`**, and the response now
+  carries `asOf` and `lookback` (`from`, `to`, `days`, by transaction date).
+
+### Changed
+
+- **`get_trading_halts` separates long-running halts.** `halts` (and `count`) now
+  hold only halts that began within the last 30 days; older halts the Nasdaq feed
+  still lists (e.g. multi-year T12 regulatory halts) move to `longRunningHalts`
+  (`longRunningCount`). Every row gains `haltAgeDays` (null = start time not
+  readable) and `longRunning`; the response gains `asOf` (when the list was read).
+- **`screen_sec_filings_performance` returns numbers, not numeric strings**, for
+  `price_at_filing`, `return_*d`, `market_cap_computed`, `price` and every
+  aggregate stat (null stays null, never 0), plus `asOf` and a `units` map
+  (returns are percent points).
+- **Tool results are compact JSON** (no indentation) in both the text content and
+  the resources, roughly 30% fewer tokens per call. `structuredContent` is unchanged.
+
 ## [0.19.0] - 2026-10-20
 
 ### Added

@@ -60,4 +60,52 @@ describe('clinical-trials market-wide search tool', () => {
     await toolMap.get('search_clinical_trials')!.handler({});
     expect(client.get).toHaveBeenCalledWith('/clinical-trials/search', {});
   });
+
+  // 2026-10-29 audit: the backend now 400s unknown values, so the schema must
+  // list the enums an agent may pass.
+  it('search schema enumerates status / dateField / sort', () => {
+    const schema = toolMap.get('search_clinical_trials')!.config.inputSchema as {
+      safeParse: (v: unknown) => { success: boolean };
+    };
+    expect(schema.safeParse({ status: 'RECRUITING' }).success).toBe(true);
+    expect(schema.safeParse({ status: 'Recruiting' }).success).toBe(false);
+    expect(schema.safeParse({ dateField: 'primary_completion_date', sort: 'updated_at' }).success).toBe(true);
+    expect(schema.safeParse({ sort: 'nct_id' }).success).toBe(false);
+  });
+
+  it('search description warns that ticker may be a collaborator', () => {
+    const d = toolMap.get('search_clinical_trials')!.config.description as string;
+    expect(d).toMatch(/collaborator/i);
+    expect(d).toMatch(/lead sponsor/i);
+  });
+});
+
+describe('get_clinical_trials sponsor role', () => {
+  let server: CapturingServer;
+  let client: MockClient;
+  let tool: CapturedTool;
+
+  beforeEach(() => {
+    server = new CapturingServer();
+    client = makeMockClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registerCompanyDataTools(server as any, client as unknown as Signal8ApiClient);
+    tool = server.tools.find((t) => t.name === 'get_clinical_trials')!;
+  });
+
+  it('documents lead vs collaborator and does not call the list a pipeline outright', () => {
+    const d = tool.config.description as string;
+    expect(d).toContain('sponsorRole');
+    expect(d).toMatch(/only a collaborator/);
+    expect(d).toMatch(/Only lead trials are the company.s own pipeline/);
+    expect(d).not.toMatch(/analyzing a biotech company's pipeline/);
+  });
+
+  it('forwards sponsorRole only when given', async () => {
+    await tool.handler({ ticker: 'PFE', sponsorRole: 'lead' });
+    expect(client.get).toHaveBeenCalledWith('/companies/PFE/clinical-trials', { limit: '10', sponsorRole: 'lead' });
+    client.get.mockClear();
+    await tool.handler({ ticker: 'PFE' });
+    expect(client.get).toHaveBeenCalledWith('/companies/PFE/clinical-trials', { limit: '10' });
+  });
 });
