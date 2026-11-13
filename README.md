@@ -115,6 +115,28 @@ Local:
 }
 ```
 
+### Cline
+
+Open Cline's MCP Servers panel, choose Configure MCP Servers, and add this to
+`cline_mcp_settings.json` (Cline CLI: `~/.cline/data/settings/cline_mcp_settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "signal8": {
+      "command": "npx",
+      "args": ["-y", "@signal8ai/mcp"],
+      "env": {
+        "SIGNAL8_API_KEY": "sk_live_your_key_here"
+      }
+    }
+  }
+}
+```
+
+Leave out the `env` block to use only the Academy tools. Step-by-step notes for
+agents are in [llms-install.md](llms-install.md).
+
 ### Any other MCP client
 
 ```bash
