@@ -1,0 +1,64 @@
+# Publishes @signal8ai/mcp to npm with trusted publishing (OIDC): no npm token.
+# npmjs.com > @signal8ai/mcp > Settings > Trusted publishing must list
+# signal8ai / signal8-mcp / publish.yml.
+#
+# Run it from the Actions tab (Run workflow), or push a tag vX.Y.Z that
+# matches package.json. A version already on npm is skipped, not re-published.
+name: Publish to npm
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing needs npm 11.5.1 or later.
+      - run: npm install -g npm@latest
+
+      - name: Tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          v=$(node -p "require('./package.json').version")
+          [ "${GITHUB_REF_NAME}" = "v$v" ] || { echo "tag ${GITHUB_REF_NAME} != package.json $v"; exit 1; }
+
+      - name: Skip if this version is already published
+        id: check
+        run: |
+          name=$(node -p "require('./package.json').name")
+          v=$(node -p "require('./package.json').version")
+          if npm view "$name@$v" version >/dev/null 2>&1; then
+            echo "$name@$v is already on npm, nothing to do"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install
+        if: steps.check.outputs.skip != 'true'
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck
+        if: steps.check.outputs.skip != 'true'
+        run: npx tsc --noEmit
+
+      # prepublishOnly runs clean + build. Provenance is generated automatically
+      # (public repo + trusted publishing).
+      - name: Publish
+        if: steps.check.outputs.skip != 'true'
+        run: npm publish --access public
