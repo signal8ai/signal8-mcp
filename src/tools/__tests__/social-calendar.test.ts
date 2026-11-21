@@ -61,8 +61,13 @@ describe('get_reverse_splits_list', () => {
     tool = server.tools.find((t) => t.name === 'get_reverse_splits_list')!;
   });
 
-  it('takes view, paging and the five filter axes, nothing else', () => {
-    expect(schemaKeys(tool)).toEqual(['board', 'cap', 'domicile', 'exchange', 'limit', 'offset', 'type', 'view']);
+  it('takes view, paging, the five filter axes and the search, nothing else', () => {
+    expect(schemaKeys(tool)).toEqual(['board', 'cap', 'domicile', 'exchange', 'limit', 'offset', 'q', 'type', 'view']);
+  });
+
+  it('sends the search text as q (2026-11-09)', async () => {
+    await tool.handler({ view: 'recent', q: 'acme' });
+    expect(get).toHaveBeenCalledWith('/reverse-splits', { view: 'recent', q: 'acme' });
   });
 
   it('no arguments: calls /reverse-splits with no query (the backend defaults to upcoming)', async () => {
@@ -97,7 +102,7 @@ describe('get_reverse_splits_list', () => {
     expect(get).toHaveBeenCalledWith('/reverse-splits', { view: 'recent' });
   });
 
-  it('the schema pins the four views and the allow-listed filter tokens', () => {
+  it('the schema pins the views and the allow-listed filter tokens', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const shape = (tool.config.inputSchema as any).shape;
     const enumValues = (z: any): string[] => {
@@ -109,7 +114,7 @@ describe('get_reverse_splits_list', () => {
       }
       return inner?._def?.values ?? [];
     };
-    expect(enumValues(shape.view)).toEqual(['upcoming', 'approved_no_date', 'vote_pending', 'recent', 'cancelled']);
+    expect(enumValues(shape.view)).toEqual(['upcoming', 'approved_no_date', 'vote_pending', 'adjourned', 'recent', 'cancelled']);
     expect(enumValues(shape.cap)).toEqual(['nano', 'micro', 'small', 'mid', 'large', 'not_measured']);
     expect(enumValues(shape.type)).toEqual(['common', 'adr', 'ordinary', 'other', 'not_measured']);
     expect(enumValues(shape.exchange)).toEqual(['NASDAQ', 'NYSE', 'AMEX', 'OTC', 'not_measured']);

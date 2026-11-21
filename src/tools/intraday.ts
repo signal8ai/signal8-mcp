@@ -11,6 +11,7 @@
  */
 
 import { z } from 'zod/v3';
+import { companyIdSchema } from './company-identifier.js';
 import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Signal8ApiClient } from '../api-client.js';
 import { toolHandler } from './tool-handler.js';
@@ -31,12 +32,15 @@ export function registerIntradayTools(server: McpServer, client: Signal8ApiClien
         'volume. `extended: true` includes premarket (04:00 to 09:30 ET) and after-hours (16:00 to 20:00 ' +
         'ET) bars.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
         resolution: z
           .enum(['1', '5', '15', '30', '60'])
           .describe('Bar resolution in minutes'),
-        from: z.number().int().describe('Start time as UNIX timestamp'),
-        to: z.number().int().describe('End time as UNIX timestamp'),
+        from: z.number().int().describe('Start time as a UNIX timestamp in SECONDS; must be before to'),
+        to: z.number().int().describe(
+          'End time as a UNIX timestamp in SECONDS. At most 5,000 bars are returned per call; a longer ' +
+            'window keeps the most recent 5,000 (e.g. ~13 regular sessions of 1-minute bars).',
+        ),
         extended: z
           .boolean()
           .optional()
@@ -70,11 +74,14 @@ export function registerIntradayTools(server: McpServer, client: Signal8ApiClien
         'volume, the Point of Control (highest-volume level) and the Value Area (the price range ' +
         'containing 70% of volume), which locate support, resistance and high-volume price nodes.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
         date: z
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/)
-          .describe('Trading day (YYYY-MM-DD)'),
+          .describe(
+            'Trading day (YYYY-MM-DD), not in the future. A weekend, holiday or a day the ticker did not trade ' +
+              'returns NO_DATA rather than a profile.',
+          ),
         bucketSize: z
           .number()
           .min(0.01)
@@ -105,7 +112,7 @@ export function registerIntradayTools(server: McpServer, client: Signal8ApiClien
         'time period (morning/midday/afternoon) and comparison to average volume, as a measure of ' +
         'real-time buying and selling pressure.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol'),
+        ticker: companyIdSchema,
       }),
       annotations: { readOnlyHint: true },
     },

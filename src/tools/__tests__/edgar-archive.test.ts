@@ -10,7 +10,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v3';
 
-import { registerEdgarTools } from '../edgar.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { registerEdgarTools, MAX_SEARCH_PHRASE_LENGTH } from '../edgar.js';
 import { CapturingServer, type CapturedTool } from '../../__tests__/helpers.js';
 import type { Signal8ApiClient } from '../../api-client.js';
 
@@ -73,6 +75,52 @@ describe('edgar archive tools', () => {
     expect(schema.safeParse({ pattern: 'ab', match: 'loose' }).success).toBe(false);
     expect(schema.safeParse({ pattern: 'ab', sort: 'oldest' }).success).toBe(false);
     expect((schema.shape.match as z.ZodTypeAny).description).toMatch(/does not match "splits"/);
+  });
+
+  it('search_filing_text accepts q / query as aliases of pattern (other search tools name it q)', async () => {
+    const tool = toolMap.get('search_filing_text')!;
+    const schema = tool.config.inputSchema as z.ZodObject<z.ZodRawShape>;
+    // The exact shape a model sent on prod, which failed validation before.
+    const args = { accessionNumber: '0001193125-22-010026', q: 'conversion price' };
+    expect(schema.safeParse(args).success).toBe(true);
+    await tool.handler(args);
+    expect(client.get).toHaveBeenLastCalledWith('/edgar/search-text', {
+      pattern: 'conversion price',
+      accessionNumber: '0001193125-22-010026',
+    });
+    await tool.handler({ query: 'going concern' });
+    expect(client.get).toHaveBeenLastCalledWith('/edgar/search-text', { pattern: 'going concern' });
+    // pattern wins when both are sent; the original field is unchanged.
+    await tool.handler({ pattern: 'warrant', q: 'ignored' });
+    expect(client.get).toHaveBeenLastCalledWith('/edgar/search-text', { pattern: 'warrant' });
+    expect((schema.shape.pattern as z.ZodTypeAny).description).toMatch(/THE SEARCH PHRASE/);
+  });
+
+  it('search_filing_text with no phrase returns an error naming the field, without calling the API', async () => {
+    const tool = toolMap.get('search_filing_text')!;
+    client.get.mockClear();
+    const out = (await tool.handler({ accessionNumber: '0001193125-22-010026' })) as {
+      isError?: boolean;
+      content: { text: string }[];
+    };
+    expect(out.isError).toBe(true);
+    expect(out.content[0].text).toMatch(/pattern.*q.*query/);
+    expect(client.get).not.toHaveBeenCalled();
+  });
+
+  it('search_filing_text phrase cap matches the backend route', () => {
+    const route = readFileSync(
+      fileURLToPath(new URL('../../../../../backend/src/routes/api/v1/edgar.ts', import.meta.url)),
+      'utf8',
+    );
+    const m = /const MAX_SEARCH_PATTERN_LENGTH = (\d+);/.exec(route);
+    expect(m).not.toBeNull();
+    expect(MAX_SEARCH_PHRASE_LENGTH).toBe(Number(m![1]));
+    const schema = toolMap.get('search_filing_text')!.config.inputSchema as z.ZodObject<z.ZodRawShape>;
+    for (const k of ['pattern', 'q', 'query']) {
+      expect(schema.safeParse({ [k]: 'x'.repeat(MAX_SEARCH_PHRASE_LENGTH) }).success).toBe(true);
+      expect(schema.safeParse({ [k]: 'x'.repeat(MAX_SEARCH_PHRASE_LENGTH + 1) }).success).toBe(false);
+    }
   });
 
   it('search_sec_filings states the company-filter rules an agent must honour', () => {

@@ -70,9 +70,13 @@ describe('DilutionScan tool set', () => {
     expect(new Set(DILUTIONSCAN_TOOLS).size).toBe(DILUTIONSCAN_TOOLS.length);
   });
 
-  it('registers exactly the curated list (34 tools)', () => {
-    expect(toolNames(DILUTIONSCAN_BRAND)).toEqual([...DILUTIONSCAN_TOOLS].sort());
-    expect(DILUTIONSCAN_TOOLS).toHaveLength(34);
+  it('registers exactly the curated list (36 tools)', () => {
+    // Plus the brand-only Signal8 Pro cross-sell (signal8-pro-catalog.ts).
+    expect(toolNames(DILUTIONSCAN_BRAND)).toEqual([...DILUTIONSCAN_TOOLS, 'get_signal8_pro_coverage'].sort());
+    expect(DILUTIONSCAN_TOOLS).toHaveLength(36);
+    // Underwriter stats and recently delisted joined the curated list 2026-11-17.
+    expect(DILUTIONSCAN_TOOLS).toContain('get_underwriter_stats');
+    expect(DILUTIONSCAN_TOOLS).toContain('get_recently_delisted');
   });
 
   it('no DilutionScan tool description points at a tool DilutionScan does not expose', () => {
@@ -129,7 +133,10 @@ describe('DilutionScan tool set', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     registerAllTools(ds as any, createMockClient(), DILUTIONSCAN_BRAND);
     const s8Desc = new Map(s8.tools.map((t) => [t.name, t.config.description]));
-    const changed = ds.tools.filter((t) => t.config.description !== s8Desc.get(t.name)).map((t) => t.name);
+    const changed = ds.tools
+      .filter((t) => t.name !== 'get_signal8_pro_coverage')
+      .filter((t) => t.config.description !== s8Desc.get(t.name))
+      .map((t) => t.name);
     expect(changed).toEqual([]);
 
     const exposed = new Set(['get_a']);
@@ -183,6 +190,13 @@ describe('DilutionScan tool set', () => {
       expect(i).toContain('scoreMaxMeasured');
       expect(i.includes(EM_DASH)).toBe(false);
     }
+  });
+
+  it('the DilutionScan instructions name the two real plans, never a "DilutionScan Pro" plan', () => {
+    expect(DILUTIONSCAN_BRAND.instructions).toContain('This server requires the DilutionScan plan or Signal8 Pro.');
+    expect(DILUTIONSCAN_BRAND.instructions).not.toContain('DilutionScan Pro');
+    expect(DILUTIONSCAN_BRAND.planPhrase).not.toContain('DilutionScan Pro');
+    expect(DILUTIONSCAN_BRAND.accountPhrase).not.toContain('DilutionScan Pro');
   });
 
   it('every tool name in the DilutionScan instructions is exposed by this server', () => {
@@ -265,7 +279,7 @@ describe('DilutionScan server end to end', () => {
     expect(client.getInstructions()).toContain('DilutionScan');
 
     const tools = (await client.listTools()).tools.map((t) => t.name).sort();
-    expect(tools).toEqual([...DILUTIONSCAN_TOOLS].sort());
+    expect(tools).toEqual([...DILUTIONSCAN_TOOLS, 'get_signal8_pro_coverage'].sort());
 
     const prompts = (await client.listPrompts()).prompts.map((p) => p.name);
     expect(prompts).toEqual(['explain_dilution']);
@@ -283,7 +297,8 @@ describe('DilutionScan server end to end', () => {
     expect(payload.code).toBe('PRO_REQUIRED');
     expect(payload.currentTier).toBe('free');
     expect(payload.upgradeUrl).toBe('https://dilutionscan.com/pricing');
-    expect(payload.error).toContain('DilutionScan Pro');
+    expect(payload.error).toContain('the DilutionScan plan or Signal8 Pro');
+    expect(payload.error).not.toContain('DilutionScan Pro');
     expect(payload.error).toContain('Free plan');
     expect(calls.map((c) => new URL(c.url).pathname)).toEqual(['/api/v1/public/account/entitlement']);
   });

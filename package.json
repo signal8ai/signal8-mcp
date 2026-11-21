@@ -1,8 +1,8 @@
 {
   "name": "@signal8ai/mcp",
   "mcpName": "ai.signal8/mcp",
-  "version": "0.20.0",
-  "description": "Signal8 MCP Server - SEC filings, small-cap dilution (warrants, convertibles, ATMs, baby shelf, cash runway), insider and congressional trades for AI agents",
+  "version": "0.21.0",
+  "description": "Signal8 MCP server for SEC EDGAR filings, Form 4 insider trades, 13F institutional holdings, congressional STOCK Act trades and dilution data. Free: 10 calls a day on the hosted server.",
   "homepage": "https://signal8.ai/mcp",
   "repository": {
     "type": "git",
@@ -52,12 +52,23 @@
   },
   "keywords": [
     "mcp",
+    "mcp-server",
+    "model-context-protocol",
     "signal8",
     "sec",
+    "sec-edgar",
+    "edgar",
+    "sec-filings",
+    "form-4",
+    "insider-trading",
+    "13f",
+    "stock-act",
+    "congress-trading",
     "dilution",
-    "ai",
+    "finance",
     "claude",
-    "cursor"
+    "cursor",
+    "ai"
   ],
   "license": "MIT",
   "files": [

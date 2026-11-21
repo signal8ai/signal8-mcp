@@ -101,10 +101,10 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
         ),
 
         // Numeric range filters - volume
-        minVolume: z.number().optional().describe(
+        minVolume: z.number().int().optional().describe(
           'Minimum daily trading volume',
         ),
-        maxVolume: z.number().optional().describe(
+        maxVolume: z.number().int().optional().describe(
           'Maximum daily trading volume',
         ),
 
@@ -132,26 +132,26 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
         ),
 
         // Numeric range filters - float
-        minFloat: z.number().optional().describe(
+        minFloat: z.number().int().optional().describe(
           'Minimum computed public float (shares)',
         ),
-        maxFloat: z.number().optional().describe(
+        maxFloat: z.number().int().optional().describe(
           'Maximum computed public float (shares)',
         ),
 
         // Numeric range filters - shares outstanding
-        minSharesOutstanding: z.number().optional().describe(
+        minSharesOutstanding: z.number().int().optional().describe(
           'Minimum shares outstanding from SEC EDGAR',
         ),
-        maxSharesOutstanding: z.number().optional().describe(
+        maxSharesOutstanding: z.number().int().optional().describe(
           'Maximum shares outstanding from SEC EDGAR',
         ),
 
         // Numeric range filters - market cap
-        minMarketCapComputed: z.number().optional().describe(
+        minMarketCapComputed: z.number().int().optional().describe(
           'Minimum market cap in USD (price * shares outstanding)',
         ),
-        maxMarketCapComputed: z.number().optional().describe(
+        maxMarketCapComputed: z.number().int().optional().describe(
           'Maximum market cap in USD (price * shares outstanding)',
         ),
 
@@ -182,10 +182,10 @@ export function registerScreenerTools(server: McpServer, client: Signal8ApiClien
         ),
 
         // Pagination
-        limit: z.number().min(1).max(100).optional().describe(
-          'Maximum results per page (default: 25, max: 100)',
+        limit: z.number().int().min(1).max(100).optional().describe(
+          'Maximum results per page (default: 50, max: 100)',
         ),
-        offset: z.number().min(0).optional().describe(
+        offset: z.number().int().min(0).optional().describe(
           'Offset for pagination (default: 0)',
         ),
 

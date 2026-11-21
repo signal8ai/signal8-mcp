@@ -87,7 +87,11 @@ export function registerEventsAndAtmTools(server: McpServer, client: Signal8ApiC
         'Not every vendor "split" is a split: stock dividends and other distributions under 25%, spin-off ' +
         'price factors and consolidations under 1.5x are returned in `nonSplitAdjustments` (each with a ' +
         '`kind` and `meaning`), not in `splits`, and are excluded from `totalSplits`, `reverseSplitCount` ' +
-        'and the cumulative. They are not splits.',
+        'and the cumulative. They are not splits. ' +
+        'Scope: dated splits only, i.e. splits that executed plus calendar announcements that carry a date. ' +
+        'A reverse split that was proposed, is waiting on a shareholder vote, or was approved with no ' +
+        'effective date set is NOT listed here; for those use get_reverse_split_lifecycle (one ticker) or ' +
+        'get_reverse_splits_list (across tickers).',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
       }),

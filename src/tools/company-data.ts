@@ -10,6 +10,7 @@
  */
 
 import { z } from 'zod/v3';
+import { companyIdSchema } from './company-identifier.js';
 import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Signal8ApiClient } from '../api-client.js';
 import { toolHandler } from './tool-handler.js';
@@ -44,6 +45,11 @@ export const CT_DATE_FIELDS = [
   'last_update_date',
 ] as const;
 export const CT_SORT_FIELDS = [...CT_DATE_FIELDS, 'updated_at'] as const;
+/**
+ * The trial-search date bound: YYYY, YYYY-MM or YYYY-MM-DD. Mirrors
+ * PARTIAL_DATE_RE in backend/src/routes/clinical-trials.ts, which 400s anything else.
+ */
+export const CT_PARTIAL_DATE = /^(\d{4})(?:-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?)?$/;
 
 /**
  * Register all 13 Phase 2 company data tools on the MCP server.
@@ -79,7 +85,7 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'or today\'s count; later issuances recorded in the filings are listed in `statedAsOf.events`, not ' +
         'added to it ("at_least" is the retired name of the same state).',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
       }),
       annotations: { readOnlyHint: true },
     },
@@ -94,10 +100,11 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
     {
       title: 'Get Market Metrics',
       description:
-        'Get computed market metrics for a company: volume averages, volatility, simple moving averages ' +
-        'and trend direction, beyond the basic quote.',
+        'Get computed market metrics for a company: volume averages, volatility, simple moving averages, ' +
+        'RSI(14) on split-adjusted daily closes (rsi14, with the session it is as of in rsi14AsOf; null = not ' +
+        'measured) and trend direction, beyond the basic quote.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
       }),
       annotations: { readOnlyHint: true },
     },
@@ -122,7 +129,7 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'while short interest is reported for this symbol\'s class only, so the two figures are not ' +
         'comparable. A null percent means not measured; it does not mean 0%.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
       }),
       annotations: { readOnlyHint: true },
     },
@@ -191,9 +198,28 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         '0 is a measured answer. "affiliateBasisStale" (basisSpanDays, affiliateAnchorDate) labels an ' +
         'affiliate table materially older than the share count. "tradeableBasis": ' +
         '"convention_conservative" means a published convention resolved the figure (see ' +
-        '"tradeableConvention"), so it is not exact.',
+        '"tradeableConvention"), so it is not exact. "otherShareClasses" (null = not measured, [] = ' +
+        'none stated) lists each other class of common equity the issuer\'s filings state: ' +
+        '{designation, listing, sharesAsStated, asOf, basis, sharesCurrent, rebased, splitsSinceAsOf, ' +
+        'splitsApplied, basisRefusal, source}. "basis" "as_stated": no split since asOf; "rebased": ' +
+        '"sharesCurrent" is the filed count moved onto today\'s split basis by "splitsApplied"; ' +
+        '"pre_split_statement": a later split exists and the count was not moved ("sharesCurrent" null), ' +
+        'so "sharesAsStated" is only what the filing stated on "asOf" and is not a current count; ' +
+        '"not_stated": no positive count. The classes publish even when the float itself is withheld. ' +
+        'Dates: "asOfDate" is YYYY-MM-DD or null and "asOfDateKind" says what it is ("newest_filing_read", ' +
+        '"stated_measurement_date", "public_float_measurement_date", "prospectus_filing_date", ' +
+        '"ownership_table_filing_date" with the form in "asOfDateForm", "newest_ownership_filing", ' +
+        '"vendor_effective_date"; with no date: "not_stated" or "not_recorded"; "no_figure"). A third-party ' +
+        'figure with no stated date carries "retrievedOn", the day it was last fetched, which is not an as-of ' +
+        'date. "nonAffiliateFloatShares" is dated by "nonAffiliateFloatAsOf"; "floatEstimate", ' +
+        '"vendorFallback" and "otherSourceFloat" carry their own "asOfDateKind". Units: "listedSecurity" ' +
+        '("ads" or "shares") is what trades under the ticker; "floatUnit" ("ads", "shares", or null with ' +
+        '"floatUnitReason") is what the headline figures count; "adsRatio" is ordinary shares per ADS as the ' +
+        'issuer\'s filings state it (null with "adsRatioReason" when not established). A null unit means not ' +
+        'established, never either unit: a third-party or ownership-derived float on an ADS listing is null. ' +
+        '"otherSourceFloat" and "vendorFallback" carry their own "unit".',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
       }),
       annotations: { readOnlyHint: true },
     },
@@ -204,27 +230,79 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
   );
 
   server.registerTool(
+    'get_ipo_lockup',
+    {
+      title: 'Get IPO Lock-up Terms',
+      description:
+        'IPO lock-up terms read from the company\'s own final prospectus (Form 424B4 or 424B1): for each ' +
+        'bound party ("holders", "directors_officers", "company" for the issuer\'s own covenant not to issue, ' +
+        '"underwriter_warrants") and tier (for example "gt5pct" holders of more than 5%), the stated length and ' +
+        'unit, and every anchor the prospectus states ("prospectus_date", "closing_date", "trading_start", ' +
+        '"offering_date", "pricing_date", "effective_date"), each with its verbatim quote, character offset, ' +
+        'computed expiry date (calendar months, never 30-day blocks) and the first trading session on or after ' +
+        'it. When the prospectus states anchors that give different dates, all are returned and ' +
+        '"anchorConflict" is true. Also: shares the locked holders hold where stated, the pre-IPO holders\' ' +
+        'average price per share and share count from the prospectus Dilution table ("preIpo"), the IPO price, ' +
+        'early-release clauses found in the prospectus ("earlyReleaseTerms"), 8-K waiver or release language ' +
+        'seen ("waiverEvents"), and the current price and float ("market"). An empty "waiverEvents" means no ' +
+        'release was seen in 8-K filings; small issuers can release holders without public notice, so it does ' +
+        'not mean no release occurred. "available": false with reason "not_found" means no IPO prospectus of ' +
+        'this company has been read; it does not mean the company has no lock-up. A null value means not stated ' +
+        'or not measured; lengths are never defaulted. "extraction.method" is "llm" or "regex".',
+      inputSchema: z.object({
+        ticker: companyIdSchema,
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ ticker }) =>
+      toolHandler(() => client.get(`/companies/${encodeURIComponent(ticker)}/ipo-lockup`)),
+  );
+
+  server.registerTool(
     'get_float_history',
     {
       title: 'Get Float History',
       description:
-        'Get the point-in-time float history for a company: one sample per trade date (float shares, ' +
-        'shares outstanding, and the source the float came from), showing the float on a past date and ' +
-        'how it expanded across a dilution event. The series is forward-only: it began accumulating in ' +
-        'mid-2026 and is not backfilled, so early or absent history is expected and an empty rows array ' +
-        'is a normal result, not an error or a sign of delisting. Each row carries "source" ("computed", ' +
-        '"sec_10k" or a market-data vendor tier) because float quality varies by provider.',
+        'Get a company\'s float on past dates. Two series, chosen with "basis". ' +
+        '"daily" (default): one sample per trade date (float shares, shares outstanding, and the source ' +
+        'the float came from), recorded going forward since mid-2026 and not backfilled, so early or ' +
+        'absent history is expected and an empty rows array is a normal result. Each row carries ' +
+        '"source" ("computed", "sec_10k" or a market-data vendor tier) because float quality varies. ' +
+        '"filings": a float history rebuilt from SEC filings back to 2023, one point per filing date: ' +
+        'shares outstanding minus shares held by affiliates (officers and directors, holders filing Schedule ' +
+        '13D, holders tied to the board (a director at the holder, or a right to name one) whatever schedule they file, ' +
+        'and 10%+ holders with no passive Schedule 13G; other passive 13G holders stay in the float). Each point is the ' +
+        'float as of its own date, on that date\'s split basis (not adjusted for later splits). Every ' +
+        'point carries "calc" (the subtraction, line by line) and "sources" (the filings it is built ' +
+        'from, with verbatim quotes and links). "source" is "ownership_table" (a proxy or 10-K ownership table), ' +
+        '"snapshot" (a dated dilution analysis) or "rolled" (a later quarterly share count, minus the last ' +
+        'table\'s holdings adjusted for insider Form 4 trades and Schedule 13D changes). A point with floatLow/floatHigh and no ' +
+        'floatShares is a range whose two bounds are the measurement; it has no midpoint value. "flags" ' +
+        'state the assumptions behind a point (for example affiliated holders carried at their last table ' +
+        'level). A date with no point was not measured, which is not a float of zero or an unchanged float.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
         days: z
           .number()
           .int()
           .optional()
-          .describe('Lookback window in trade dates. Default 90, clamped to 1-730.'),
+          .describe('basis "daily" only: lookback window in trade dates. Default 90, clamped to 1-730.'),
+        basis: z
+          .enum(['daily', 'filings'])
+          .optional()
+          .describe(
+            '"daily" (default): recorded daily samples since mid-2026. "filings": points rebuilt from SEC ' +
+              'filings since 2023, each with its calculation and cited filings.',
+          ),
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ ticker, days }) => {
+    async ({ ticker, days, basis }) => {
+      if (basis === 'filings') {
+        return toolHandler(() =>
+          client.get(`/companies/${encodeURIComponent(ticker)}/float-history/filings`),
+        );
+      }
       const params: Record<string, string> = {};
       if (days !== undefined) params.days = String(days);
       return toolHandler(() =>
@@ -242,24 +320,31 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'period shorthand (1M, 3M, 6M, 1Y, 5Y or the full history) or an explicit from/to UNIX timestamp ' +
         'window. The default is one year of daily candles.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
         period: z.enum(['1M', '3M', '6M', '1Y', '5Y', 'ALL'])
           .optional()
           .describe('Lookback period shorthand (default: "1Y"). Ignored if from/to are provided.'),
         resolution: z.enum(['D', 'W', 'M'])
           .optional()
           .describe('Candle resolution: "D" (daily, default), "W" (weekly), "M" (monthly)'),
-        from: z.number().int().optional().describe('Start date as UNIX timestamp (overrides period)'),
-        to: z.number().int().optional().describe('End date as UNIX timestamp (overrides period)'),
+        from: z.number().int().optional().describe(
+          'Start as a UNIX timestamp in SECONDS (overrides period). With from and no to, the window runs to now. ' +
+            'from must be before to.',
+        ),
+        to: z.number().int().optional().describe(
+          'End as a UNIX timestamp in SECONDS. Used only together with from (to alone is ignored and period applies). ' +
+            'At most 5,000 candles are returned per call; a longer window keeps the most recent 5,000.',
+        ),
       }),
       annotations: { readOnlyHint: true },
     },
     async ({ ticker, period, resolution, from, to }) => {
       const params: Record<string, string> = {};
       if (resolution) params.resolution = resolution;
-      if (from !== undefined && to !== undefined) {
+      if (from !== undefined) {
+        // from alone means "from then until now" (the route needs both).
         params.from = String(from);
-        params.to = String(to);
+        params.to = String(to ?? Math.floor(Date.now() / 1000));
       } else if (period) {
         params.period = period;
       }
@@ -277,7 +362,7 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'Get percentage price changes for a stock across multiple timeframes (1D, 5D, 1M, 3M, 6M, YTD, ' +
         '1Y, 3Y, 5Y, 10Y and MAX) without full candle data.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
       }),
       annotations: { readOnlyHint: true },
     },
@@ -295,15 +380,23 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
       title: 'Get Financial Statements',
       description:
         'Get income statement, balance sheet and cash flow data for a company (revenue, profitability, ' +
-        'debt, cash position), in annual, quarterly or trailing-twelve-month views.',
+        'debt, cash position) from SEC XBRL filings. The response carries BOTH the annual and the quarterly ' +
+        'series (no separate trailing-twelve-month series: sum the last four quarters for TTM flow figures). ' +
+        'HTTP 404 "Company not found" / "No SEC XBRL financials" means the issuer has no SEC XBRL financials ' +
+        'in Signal8 (e.g. a foreign OTC issuer that files nothing with the SEC): a coverage gap, not a bad call. ' +
+        'costOfRevenueBasis states what costOfRevenue measures: "excludes_depreciation_amortization" when the ' +
+        'filer tags only a cost line without depreciation and amortization, so a margin from it is on that basis. ' +
+        'grossProfit and grossMargin are null when not measured (no GrossProfit tag and no cost-of-revenue tag, as ' +
+        'at banks and most REITs); a null margin is not a 100% margin. grossProfitSource is "reported" or ' +
+        '"revenue_minus_cost".',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
         type: z.enum(['annual', 'quarter', 'ttm'])
           .optional()
-          .describe('Financial period type: "annual", "quarter", or "ttm" (trailing twelve months). Defaults to annual.'),
+          .describe('Accepted for compatibility; the response always carries both annual and quarterly periods.'),
         limit: z.number().int().min(1).max(40)
           .optional()
-          .describe('Maximum number of periods to return (1-40). Defaults to 8.'),
+          .describe('Maximum number of periods per series (1-40). Defaults to 8.'),
       }),
       annotations: { readOnlyHint: true },
     },
@@ -324,7 +417,7 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'Get historical earnings data for a company: EPS actual vs estimate, revenue actual vs estimate, ' +
         'and surprise percentages (beats and misses).',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
         limit: z.number().int().min(1).max(40)
           .optional()
           .describe('Maximum number of earnings periods to return (1-40). Defaults to 8.'),
@@ -346,7 +439,7 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
       description:
         'Get the key executives and officers of a company: name, title, compensation and tenure.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
       }),
       annotations: { readOnlyHint: true },
     },
@@ -428,7 +521,7 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'in favour of the release. For a small foreign issuer that files its news as 6-Ks, the filing is ' +
         'the news. `pressReleasesOnly` returns only official company press releases (no filings).',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
         limit: z.number().int().min(1).max(20)
           .optional()
           .describe('Maximum number of articles to return (1-20). Defaults to 10.'),
@@ -454,7 +547,7 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'Get the analyst ratings consensus for a company: average target price, number of analysts, ' +
         'buy/hold/sell breakdown and consensus recommendation.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
       }),
       annotations: { readOnlyHint: true },
     },
@@ -472,7 +565,7 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'Get forward analyst estimates for a company: EPS, revenue, EBITDA and net income (low/high/avg) ' +
         'with analyst counts, for annual or quarterly periods.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
         period: z.enum(['annual', 'quarter'])
           .optional()
           .describe('Estimate period: "annual" (default) or "quarter".'),
@@ -536,7 +629,7 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'total above the returned count means the list was truncated. Dates of type ESTIMATED are sponsor ' +
         'projections, not facts.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "MRNA", "PFE")'),
+        ticker: companyIdSchema,
         limit: z.number().int().min(1).max(50)
           .optional()
           .describe('Maximum number of clinical trials to return (1-50). Defaults to 10.'),
@@ -582,8 +675,9 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         dateField: z.enum(CT_DATE_FIELDS).optional().describe(
           'Date column the from/to window applies to (default primary_completion_date)',
         ),
-        from: z.string().optional().describe('Inclusive start: YYYY, YYYY-MM or YYYY-MM-DD'),
-        to: z.string().optional().describe(
+        from: z.string().regex(CT_PARTIAL_DATE, 'from must be YYYY, YYYY-MM or YYYY-MM-DD').optional()
+          .describe('Inclusive start: YYYY, YYYY-MM or YYYY-MM-DD'),
+        to: z.string().regex(CT_PARTIAL_DATE, 'to must be YYYY, YYYY-MM or YYYY-MM-DD').optional().describe(
           'Inclusive end: YYYY, YYYY-MM or YYYY-MM-DD (a partial date covers its whole year/month)',
         ),
         sort: z.enum(CT_SORT_FIELDS).optional().describe('Sort column (default primary_completion_date)'),

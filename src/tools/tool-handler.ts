@@ -7,6 +7,7 @@
  */
 
 import { Signal8ApiError } from '../api-client.js';
+import { scrubProviderNames } from '../provider-sanitizer.js';
 
 /**
  * MCP tool result shape returned by all tool handlers.
@@ -42,7 +43,9 @@ export async function toolHandler<T>(
   fn: () => Promise<T>,
 ): Promise<McpToolResult> {
   try {
-    const data = await fn();
+    // Provider names never reach an MCP client (founder 2026-11-18); see
+    // provider-sanitizer.ts for why this repeats the API's own scrub.
+    const data = scrubProviderNames(await fn());
     return {
       content: [{
         type: 'text',
@@ -59,7 +62,7 @@ export async function toolHandler<T>(
             error: error.message,
             code: error.code,
             statusCode: error.statusCode,
-            ...(error.details ? { details: error.details } : {}),
+            ...(error.details ? { details: scrubProviderNames(error.details) } : {}),
           }),
         }],
         isError: true,

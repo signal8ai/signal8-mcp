@@ -57,7 +57,13 @@ interface Reply {
 }
 
 /** fetch() cannot override Host, so use node:http directly. */
-function call(host: string, method: string, path: string, body?: unknown): Promise<Reply> {
+function call(
+  host: string,
+  method: string,
+  path: string,
+  body?: unknown,
+  extraHeaders: Record<string, string> = {},
+): Promise<Reply> {
   return new Promise((resolve, reject) => {
     const payload = body === undefined ? undefined : JSON.stringify(body);
     const req = httpRequest(
@@ -69,6 +75,7 @@ function call(host: string, method: string, path: string, body?: unknown): Promi
         headers: {
           Host: host,
           Accept: 'application/json, text/event-stream',
+          ...extraHeaders,
           ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {}),
         },
       },
@@ -220,9 +227,50 @@ describe('http-transport brand by Host', () => {
 
     const list = await call('mcp.dilutionscan.com', 'POST', '/mcp', { jsonrpc: '2.0', id: 2, method: 'tools/list' });
     const names = (rpcResult(list).tools as Array<{ name: string }>).map((t) => t.name).sort();
-    expect(names).toEqual([...DILUTIONSCAN_TOOLS].sort());
+    expect(names).toEqual([...DILUTIONSCAN_TOOLS, 'get_signal8_pro_coverage'].sort());
 
     const s8list = await call('mcp.signal8.ai', 'POST', '/mcp', { jsonrpc: '2.0', id: 2, method: 'tools/list' });
     expect((rpcResult(s8list).tools as unknown[]).length).toBeGreaterThan(100);
+  });
+});
+
+describe('http-transport: Grok connectors get the 401 up front, nobody else does', () => {
+  const initialize = (clientName: string) => ({
+    jsonrpc: '2.0',
+    id: 0,
+    method: 'initialize',
+    params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: clientName, version: '0.1.0' } },
+  });
+
+  it('challenges every anonymous Grok probe, including the one with no User-Agent', async () => {
+    const probes: Array<[string, Record<string, string>]> = [
+      ['connectors-manager', { 'User-Agent': 'grok-connectors-manager/0.1.0' }],
+      ['grok-validator', { 'User-Agent': 'grok-connectors-manager/0.1.0' }],
+      ['grok-validator', {}],
+    ];
+    for (const host of ['mcp.signal8.ai', 'mcp.dilutionscan.com', 'mcp.splitscanner.com']) {
+      for (const [name, headers] of probes) {
+        const r = await call(host, 'POST', '/mcp', initialize(name), headers);
+        expect(r.status, `${host} ${name}`).toBe(401);
+        expect(String(r.headers['www-authenticate'])).toContain('resource_metadata=');
+      }
+    }
+  });
+
+  it('keeps anonymous discovery for every other client (scanners, Claude, ChatGPT, Cursor)', async () => {
+    const others: Array<[string, Record<string, string>]> = [
+      ['smithery', { 'User-Agent': 'node' }],
+      ['claude-ai', { 'User-Agent': 'Claude-User' }],
+      ['openai-mcp', { 'User-Agent': 'openai-mcp/1.0.0' }],
+      ['cursor-vscode', {}],
+      ['t', {}],
+    ];
+    for (const [name, headers] of others) {
+      const r = await call('mcp.signal8.ai', 'POST', '/mcp', initialize(name), headers);
+      expect(r.status, name).toBe(200);
+      expect((rpcResult(r).serverInfo as { name: string }).name).toBe('signal8-mcp');
+    }
+    const list = await call('mcp.signal8.ai', 'POST', '/mcp', { jsonrpc: '2.0', id: 2, method: 'tools/list' });
+    expect(list.status).toBe(200);
   });
 });

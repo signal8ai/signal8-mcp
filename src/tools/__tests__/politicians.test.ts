@@ -187,3 +187,47 @@ describe('get_politician_scorecard (@CongressScanner weekly card)', () => {
     expect(client.get).toHaveBeenCalledWith('/politicians/scorecard', { window: '90' });
   });
 });
+
+/**
+ * Schema ↔ backend drift (Octo tool-failure audit, 2026-11-12): the slug and
+ * ticker shapes below are what the backend 400s outside of. The regexes are
+ * READ from the backend source rather than imported (importing the handler
+ * module pulls in the DB pool), so editing either side without the other
+ * fails here.
+ */
+describe('politician tool schemas match backend validation', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const { POLITICIAN_SLUG_RE, BY_TICKER_RE } = await import('../politicians.js');
+  const handlersPath = fileURLToPath(
+    new URL('../../../../../backend/src/routes/senate-insiders-handlers.ts', import.meta.url),
+  );
+  const src = readFileSync(handlersPath, 'utf8');
+
+  it('POLITICIAN_SLUG_RE is byte-identical to the backend POLITICAL_SLUG_RE', () => {
+    const m = /const POLITICAL_SLUG_RE = (\/.+\/);/.exec(src);
+    expect(m).not.toBeNull();
+    expect(String(POLITICIAN_SLUG_RE)).toBe(m![1]);
+  });
+
+  it('BY_TICKER_RE accepts exactly the by-ticker route shape (plus an optional "$")', () => {
+    expect(src).toContain('/^[A-Z][A-Z0-9.-]{0,9}$/.test(rawTicker)');
+    for (const ok of ['AAPL', 'brk.b', '$NVDA', 'A', 'ABCDEFGHIJ']) expect(BY_TICKER_RE.test(ok)).toBe(true);
+    for (const bad of ['', '1ABC', 'ABCDEFGHIJK', 'AA PL', 'AAPL!']) expect(BY_TICKER_RE.test(bad)).toBe(false);
+  });
+
+  it('every slug-taking /senate-insiders tool rejects a slug the backend would 400', () => {
+    const server = new CapturingServer();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registerPoliticianTools(server as any, makeMockClient() as unknown as Signal8ApiClient);
+    const slugTools = server.tools.filter(
+      (t) => (t.config.inputSchema as { shape?: Record<string, unknown> }).shape?.slug !== undefined,
+    );
+    expect(slugTools.length).toBeGreaterThanOrEqual(7);
+    for (const t of slugTools) {
+      const schema = t.config.inputSchema as { safeParse: (v: unknown) => { success: boolean } };
+      expect(schema.safeParse({ slug: 'sen-ted-cruz' }).success, t.name).toBe(true);
+      expect(schema.safeParse({ slug: 'Ted Cruz' }).success, t.name).toBe(false);
+    }
+  });
+});

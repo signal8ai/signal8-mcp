@@ -37,6 +37,7 @@ const EXPECTED_TOOLS = [
   'get_clinical_trials',
   'get_company_profile',
   'get_compliance',
+  'get_recently_delisted',
   'get_dilution_coverage',
   'get_dilution_history',
   'get_dilution_instruments',
@@ -76,6 +77,7 @@ const EXPECTED_TOOLS = [
   'get_institutions',
   'get_institutions_leaderboards',
   'get_intraday_bars',
+  'get_ipo_lockup',
   'get_learn_guide',
   'get_legislative_calendar',
   'get_market_breadth',
@@ -117,6 +119,7 @@ const EXPECTED_TOOLS = [
   'get_reverse_split_authority',
   'get_recently_sponsored_bills',
   'get_rvol_history',
+  'get_live_rvol',
   'get_senate_trades_by_ticker',
   'get_short_interest',
   'get_split_history',
@@ -124,6 +127,7 @@ const EXPECTED_TOOLS = [
   'get_stock_price_change',
   'get_top_movers',
   'get_trading_halts',
+  'get_underwriter_stats',
   'get_upcoming_reverse_splits',
   'get_volume_profile',
   'lookup_accession_number',
@@ -178,7 +182,7 @@ beforeAll(() => {
 
 describe('tool registration', () => {
   it('registers exactly 113 tools', () => {
-    expect(server.tools).toHaveLength(113);
+    expect(server.tools).toHaveLength(117);
   });
 
   it.each(EXPECTED_TOOLS)('registers tool: %s', (name) => {

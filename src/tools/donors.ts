@@ -29,6 +29,17 @@ const PARTY = z.enum(['D', 'R', 'I']);
 const CHAMBER = z.enum(['senate', 'house']);
 
 /**
+ * Appended to every `cycle` description. The donor routes
+ * (backend/src/routes/politicians-donors.ts `parseCycle`) never 400 a cycle:
+ * a year outside 1980-2100 silently becomes the current cycle, and an odd year
+ * is queried as-is and matches no FEC two-year cycle. Stated so the model does
+ * not read either as "no donors".
+ */
+const CYCLE_NOTE =
+  ' FEC cycles are even years (2022, 2024, 2026); an odd year matches no cycle and returns no ' +
+  'donors, and a year outside 1980-2100 is replaced by the current cycle.';
+
+/**
  * Register campaign-donor tools on the MCP server.
  *
  * @param server - McpServer instance
@@ -49,7 +60,7 @@ export function registerDonorTools(server: McpServer, client: Signal8ApiClient):
       inputSchema: z.object({
         slug: z.string().describe('Politician URL slug (e.g., "sen-nancy-pelosi")'),
         cycle: CYCLE_PATTERN.optional().describe(
-          'Election cycle as 4-digit year (e.g. "2024"). Defaults to most recent cycle.',
+          'Election cycle as 4-digit year (e.g. "2024"). Defaults to most recent cycle.' + CYCLE_NOTE,
         ),
         type: DONOR_TYPE.optional().describe(
           "Filter by donor type: 'individual', 'pac', or 'all' (default: 'all')",
@@ -95,7 +106,7 @@ export function registerDonorTools(server: McpServer, client: Signal8ApiClient):
       inputSchema: z.object({
         slug: z.string().describe('Politician URL slug (e.g., "sen-nancy-pelosi")'),
         cycle: CYCLE_PATTERN.optional().describe(
-          'Election cycle as 4-digit year (e.g. "2024"). Defaults to most recent cycle.',
+          'Election cycle as 4-digit year (e.g. "2024"). Defaults to most recent cycle.' + CYCLE_NOTE,
         ),
       }),
       annotations: { readOnlyHint: true },
@@ -124,7 +135,7 @@ export function registerDonorTools(server: McpServer, client: Signal8ApiClient):
         '"which party raised more?".',
       inputSchema: z.object({
         cycle: CYCLE_PATTERN.optional().describe(
-          'Election cycle as 4-digit year (e.g. "2024"). Defaults to most recent cycle.',
+          'Election cycle as 4-digit year (e.g. "2024"). Defaults to most recent cycle.' + CYCLE_NOTE,
         ),
         party: PARTY.optional().describe("Filter by party: 'D', 'R', or 'I'"),
         chamber: CHAMBER.optional().describe("Filter by chamber: 'senate' or 'house'"),
@@ -159,7 +170,7 @@ export function registerDonorTools(server: McpServer, client: Signal8ApiClient):
       inputSchema: z.object({
         slug: z.string().describe('Politician URL slug (e.g., "sen-nancy-pelosi")'),
         cycle: CYCLE_PATTERN.optional().describe(
-          'Election cycle as 4-digit year. Defaults to the latest cycle with FEC data.',
+          'Election cycle as 4-digit year. Defaults to the latest cycle with FEC data.' + CYCLE_NOTE,
         ),
         limit: z.number().min(1).max(100).optional().describe(
           'Page size (only used when total overlaps exceed 50; default 50, max 100)',

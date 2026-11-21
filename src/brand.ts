@@ -16,7 +16,7 @@
  * An unknown value THROWS at boot: silently falling back to Signal8 would
  * serve the full catalogue under the DilutionScan host with no Pro gate.
  *
- * 🔴 The DilutionScan Pro gate is a PRODUCT gate, not the data gate. Every paid
+ * 🔴 The DilutionScan MCP plan gate is a PRODUCT gate, not the data gate. Every paid
  * backend route keeps its own plan check; a caller who points a client at the
  * Signal8 server with the same key gets exactly what that key already allowed.
  * See `pro-gate.ts` and backend `routes/api/v1/account.ts`.
@@ -135,6 +135,9 @@ export const DILUTIONSCAN_TOOLS = [
   'get_baby_shelf_capacity',
   'get_dilution_performance',
   'get_dilution_history',
+  // Who runs the deals: underwriters and placement agents, and how the stock
+  // traded after their offerings (2026-11-17).
+  'get_underwriter_stats',
   // Cash and the need to raise
   'get_cash_position',
   'get_cash_history',
@@ -152,6 +155,8 @@ export const DILUTIONSCAN_TOOLS = [
   'get_ended_reverse_splits',
   'get_reverse_split_authority',
   'get_compliance',
+  // Securities that left an exchange in the last 30 / 60 / 90 days (2026-11-17).
+  'get_recently_delisted',
   // The filings behind it. The exhibit and text-search tools are included
   // because offering pricing (424B5) and 8-K press releases, the core dilution
   // evidence, live in exhibits, and the filing tools' own descriptions route
@@ -169,16 +174,19 @@ export const DILUTIONSCAN_TOOLS = [
   'define_term',
 ] as const;
 
-const DILUTIONSCAN_INSTRUCTIONS = `DilutionScan (dilutionscan.com, by Signal8) is read-only dilution research for small-cap US-listed companies: warrants, convertibles, preferred stock, shelf registrations, ATM programs, equity lines, baby-shelf capacity, cash runway, float and reverse splits. Every figure is cited to the SEC filing it came from. This server requires DilutionScan Pro (the same subscription as Signal8 Pro).
+const DILUTIONSCAN_INSTRUCTIONS = `DilutionScan (dilutionscan.com, by Signal8) is read-only dilution research for small-cap US-listed companies: warrants, convertibles, preferred stock, shelf registrations, ATM programs, equity lines, baby-shelf capacity, cash runway, float and reverse splits. Every figure is cited to the SEC filing it came from. This server requires the DilutionScan plan or Signal8 Pro.
 
 Typical workflow:
 - Resolve the company with \`search_companies\` if you only have a name. Most tools take a bare ticker (e.g. "MNTS").
 - Call \`get_dilution_coverage\` first. \`not_covered\` means DilutionScan has not analysed this company yet, which is not the same as it having no dilution. \`stale\` means the analysis predates a newer filing; say so.
 - Then \`get_dilution_risk\` (pressure score and levels), \`get_dilution_snapshot\` (totals, cash, float, as-of date; no instrument rows) and \`get_dilution_instruments\` with one instrument family per call, requesting only the families you need. \`get_baby_shelf_capacity\` is the live raisable-now figure; the shelf capacity on instrument rows is a stored, dated figure. \`get_dilution_performance\` and \`get_dilution_history\` cover post-offering price action and the share-count series.
+- Underwriters and placement agents: \`get_underwriter_stats\` (one call per firm, as the user wrote it) gives a firm's deal count and how stocks traded after its offerings; quote each median with its n, and never call a firm good or bad.
 - Cash and the need to raise: \`get_cash_position\`, \`get_cash_history\`, \`get_cash_runway_calendar\` and \`screen_must_raise\`.
-- Share structure and listing: \`get_float\` (latest) and \`get_float_history\` (past dates), \`get_short_interest\`, \`get_split_history\`, \`get_compliance\`. Reverse splits: \`get_reverse_splits_list\` (merged calendar + SEC tracker: upcoming / recent / approved-no-date / vote-pending, one view per call), \`get_upcoming_reverse_splits\` (vendor calendar only), \`get_reverse_split_lifecycle\` (one company, with the quotes and source links to cite), \`get_ended_reverse_splits\` (failed votes, abandoned splits, expired authorities) and \`get_reverse_split_authority\` (boards still holding split authority, used vs remaining).
+- Share structure and listing: \`get_float\` (latest) and \`get_float_history\` (past dates), \`get_short_interest\`, \`get_split_history\`, \`get_compliance\`. Reverse splits: \`get_reverse_splits_list\` (merged calendar + SEC tracker: upcoming / recent / approved-no-date / vote-pending / cancelled, one view per call), \`get_upcoming_reverse_splits\` (vendor calendar only), \`get_reverse_split_lifecycle\` (one company, with the quotes and source links to cite), \`get_ended_reverse_splits\` (failed votes, abandoned splits, expired authorities) and \`get_reverse_split_authority\` (boards still holding split authority, used vs remaining).
+- Delistings: \`get_recently_delisted\` lists securities removed or suspended from Nasdaq, NYSE or NYSE American in the last 30, 60 or 90 days, with the reason on record (the Rule 12d2-2 provision the Form 25 was filed under, or the exchange's own words), never a reason inferred from price. A merger or redemption is not a failed company.
 - To read the source filing: \`search_sec_filings\` or \`search_filing_text\` (passages), \`lookup_accession_number\`, then \`get_filing_document\` for the whole submission, or \`get_filing_documents\` / \`get_filing_exhibits\` for exhibit ids and \`get_exhibit_content\` for one exhibit (424B5 pricing and 8-K press releases are exhibits). A search starting before \`archiveFrom\` is outside the archive, not evidence that no filing exists.
 - To explain a term: \`define_term\`, \`search_learn_guides\` (also the fallback when a term is not found) and \`get_learn_guide\`; cite the guide url. The \`explain_dilution\` prompt runs the whole workflow.
+- Outside dilution (insider trades, politicians, institutions, analyst ratings, earnings, financials, news, market movers): this server does not carry that data. \`get_signal8_pro_coverage\` lists what Signal8 Pro adds, on the Signal8 MCP server with the same account. Mention it once when a question needs that data; do not bring it up otherwise, and never answer such a question from memory as if this server had looked it up.
 
 ${REPORTING_RULES}`;
 
@@ -192,12 +200,11 @@ export const DILUTIONSCAN_BRAND: McpBrand = {
   registerResources: false,
   requirePro: true,
   upgradeUrl: 'https://dilutionscan.com/pricing',
-  // The user-facing wording is deliberately UNCHANGED by the $29.99 plan: the plan
-  // sells behind the fail-closed `dilutionscan_plan_checkout` toggle, and this
-  // process cannot read it, so copy naming the plan could be false on an
-  // environment that has not armed it. A plan holder still passes (below).
-  planPhrase: 'DilutionScan Pro',
-  accountPhrase: 'DilutionScan Pro',
+  // There is no "DilutionScan Pro" plan. Two plans pass this gate: the DilutionScan plan
+  // (the dilutionscan.com site subscription, which includes this MCP) and Signal8 Pro.
+  // The copy names both, mirroring SplitScanner below.
+  planPhrase: 'the DilutionScan plan or Signal8 Pro',
+  accountPhrase: 'DilutionScan or Signal8 Pro',
   // The field the backend `GET /account/entitlement` returns for an ACTIVE DilutionScan
   // plan ($29.99/mo, Stripe, comp or in-app). Absent or false means "not a plan holder";
   // Pro still passes. 🔴 This passes only the MCP-side gate. The BACKEND enforces the plan
@@ -236,6 +243,8 @@ export const SPLITSCANNER_TOOLS = [
   'get_split_performance',
   // Listing-standard context (bid price, reverse-split limit rule)
   'get_compliance',
+  // Securities that left an exchange in the last 30 / 60 / 90 days (2026-11-17)
+  'get_recently_delisted',
   // Share structure on either side of a split
   'get_float',
   'get_float_history',
@@ -272,8 +281,10 @@ Typical workflow:
 - Calendar and tracker lists: \`get_reverse_splits_list\` (merged vendor calendar + SEC tracker, one view per call: upcoming, recent, approved_no_date, vote_pending, cancelled (ended without taking effect in the past 90 days)) is the main list. \`get_upcoming_reverse_splits\` is the vendor market calendar only. \`get_ended_reverse_splits\` lists failed votes, abandoned splits and expired authorities. \`get_reverse_split_authority\` lists boards that still hold split authority, with room used and remaining.
 - One company: \`get_reverse_split_lifecycle\` gives its episodes with quotes and the source links to cite. \`get_split_history\` gives executed splits with the cumulative 2-year reverse ratio, and \`get_split_performance\` the price moves after each executed split.
 - Why a company splits: \`get_compliance\` evaluates exchange standards (minimum bid price, the reverse-split limit rule) and lists what could not be judged. A notice or its absence is context, not a forecast. \`get_float\` (latest) and \`get_float_history\` (past dates) show shares available to trade; a float on one side of a split needs the split ratio applied before comparing, so say which basis a figure is on. \`get_quote\` and \`get_company_profile\` give basics.
+- Delistings: \`get_recently_delisted\` lists securities removed or suspended from Nasdaq, NYSE or NYSE American in the last 30, 60 or 90 days, with the reason on record (the Rule 12d2-2 provision the Form 25 was filed under, or the exchange's own words), never a reason inferred from price. A merger or redemption is not a failed company.
 - To read the source filing: \`search_sec_filings\` or \`search_filing_text\` (passages), \`lookup_accession_number\`, then \`get_filing_document\` for the whole submission, or \`get_filing_documents\` / \`get_filing_exhibits\` for exhibit ids and \`get_exhibit_content\` for one exhibit (an 8-K press release is an exhibit). A search starting before \`archiveFrom\` is outside the archive, not evidence that no filing exists.
 - To explain a term (reverse split, ratio, bid-price rule, authority): \`define_term\`, \`search_learn_guides\` (also the fallback when a term is not found) and \`get_learn_guide\`; cite the guide url.
+- Outside reverse splits (insider trades, politicians, institutions, analyst ratings, earnings, financials, news, market movers): this server does not carry that data. \`get_signal8_pro_coverage\` lists what Signal8 Pro adds, on the Signal8 MCP server with the same account. Mention it once when a question needs that data; do not bring it up otherwise, and never answer such a question from memory as if this server had looked it up.
 
 ${SPLITSCANNER_REPORTING_RULES}`;
 

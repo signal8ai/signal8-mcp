@@ -38,6 +38,7 @@
 import { z } from 'zod/v3';
 import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Signal8ApiClient } from '../api-client.js';
+import { companyIdSchema } from './company-identifier.js';
 import { toolHandler } from './tool-handler.js';
 
 /** Matches the backend clamp in routes/social-calendar.ts. */
@@ -55,7 +56,7 @@ const DEFAULT_MAX_MARKET_CAP = 300_000_000;
  * @signal8/shared, so the lists are copied; the backend answers 400 on any
  * token outside ITS lists, so a drift here fails loudly rather than silently.
  */
-const REVERSE_SPLITS_VIEWS = ['upcoming', 'approved_no_date', 'vote_pending', 'recent', 'cancelled'] as const;
+const REVERSE_SPLITS_VIEWS = ['upcoming', 'approved_no_date', 'vote_pending', 'adjourned', 'recent', 'cancelled'] as const;
 const REVERSE_SPLITS_CAP_FILTERS = ['nano', 'micro', 'small', 'mid', 'large', 'not_measured'] as const;
 const REVERSE_SPLITS_TYPE_FILTERS = ['common', 'adr', 'ordinary', 'other', 'not_measured'] as const;
 const REVERSE_SPLITS_EXCHANGE_FILTERS = ['NASDAQ', 'NYSE', 'AMEX', 'OTC', 'not_measured'] as const;
@@ -146,7 +147,8 @@ export function registerSocialCalendarTools(
           .optional()
           .describe(
             'Window end, inclusive, as a day offset from the US market day (default 1). ' +
-            'Use 7 with fromOffset 1 for the week ahead.',
+            'Use 7 with fromOffset 1 for the week ahead. Send it whenever fromOffset is above 1: ' +
+            'it defaults to 1, and a fromOffset beyond toOffset is rejected.',
           ),
         includeLifecycle: z
           .boolean()
@@ -254,7 +256,13 @@ export function registerSocialCalendarTools(
         '8-K Items 3.03/5.03/5.07, 6-Ks): one episode per split authority, newest first, each with ' +
         'its state (proposed, vote scheduled, approved, ratio set, effective date announced, charter ' +
         'filed, ... or closed), the ratio or authorised range, meeting / vote / effective dates, the ' +
-        'state history, and the events behind it oldest first. Every event carries its source ' +
+        'state history, and the events behind it oldest first. The state consent_pending means approved ' +
+        'by written consent of holders of a majority of the voting power (a Schedule 14C information ' +
+        'statement): no meeting or vote is still to come. Such an episode carries writtenConsent ' +
+        '{informationStatement ("preliminary" / "definitive" / null), definitiveFiledOn, ' +
+        'preliminaryFiledOn, detail}: under SEC Rule 14c-2 the split can take effect no sooner than 20 ' +
+        'calendar days after the definitive statement is sent to holders; no date is computed from ' +
+        'that. Every event carries its source ' +
         '(accession and an EDGAR sourceUrl) and its facts; every stated fact carries the verbatim ' +
         'quote it was read from. Not stated means not measured, not "no": a fact with notStated:true ' +
         '(or a null field) means the documents read did not say it, not that it is false, zero or ' +
@@ -285,13 +293,12 @@ export function registerSocialCalendarTools(
         'vote_required appears only as a labelled domicile default, not as a statement that a vote is' +
         ' needed. path "unknown" is not "no vote"; a missing proxy does not determine a path. An HTTP' +
         ' 503 FEATURE_DISABLED means the lifecycle tracker is switched off and the response says ' +
-        'nothing about the company\'s splits.',
+        'nothing about the company\'s splits. The ticker input also takes a former ticker or a ' +
+        'numeric SEC CIK; an answer for one of those carries a top-level `resolvedFrom` block naming ' +
+        'the current symbol. An episode announcedDate is the day the split first became public in a ' +
+        'filing or notice; null = not measured (never a date after the effective date).',
       inputSchema: z.object({
-        ticker: z
-          .string()
-          .min(1)
-          .max(12)
-          .describe('US stock ticker, e.g. "ABCD" or "BRK.B".'),
+        ticker: companyIdSchema,
       }),
       annotations: { readOnlyHint: true },
     },
@@ -345,12 +352,12 @@ export function registerSocialCalendarTools(
           .string()
           .regex(ISO_DAY_RE)
           .optional()
-          .describe('Earliest endedOn, YYYY-MM-DD (default: 365 days before "to").'),
+          .describe('Earliest endedOn, YYYY-MM-DD, on or before "to" (default: 365 days before "to"). A from after to is rejected.'),
         to: z
           .string()
           .regex(ISO_DAY_RE)
           .optional()
-          .describe('Latest endedOn, YYYY-MM-DD (default: today, US Eastern).'),
+          .describe('Latest endedOn, YYYY-MM-DD (default: today, US Eastern), so a future "from" needs "to" as well.'),
         exchange: z
           .array(z.enum(REVERSE_SPLITS_EXCHANGE_FILTERS))
           .optional()
@@ -479,7 +486,7 @@ export function registerSocialCalendarTools(
         '= tracked episodes where a reverse split is proposed and the shareholder vote has not ' +
         'happened yet; "cancelled" = tracked episodes that ended without the split taking effect in ' +
         'the past 90 days (withdrawn by the company, a vote that did not approve it, an approved ' +
-        'authority that expired unused, a meeting postponed indefinitely), with a cancelled object ' +
+        'authority that expired unused, a split or its meeting postponed with no new date), with a cancelled object ' +
         '(outcome, outcomeLabel, endedOn, endedOnBasis, laterEpisode when the company has a newer ' +
         'open proposal) and the closing document as the source; older ended episodes are on the ' +
         'separate ended-reverse-splits tool. A security sits on exactly one of the first four views (upcoming, ' +
@@ -508,6 +515,7 @@ export function registerSocialCalendarTools(
         'not an effective date and does not appear in this field. A conditional date ("the 25th ' +
         'trading day after...") is returned verbatim in effectiveCondition and is not a date. ' +
         'effectiveDateSource says where effectiveDate came from: "filing" = the issuer stated it; ' +
+        '"exchange_notice" = only a Nasdaq / NYSE / FINRA notice states it (not the issuer); ' +
         '"market_calendar" = the filing states no date and the vendor calendar supplies it. ' +
         'marketCalendarAgrees is a cross-check on a tracker row the calendar also lists: true = same ' +
         'date and ratio; false = at least one differs and marketCalendarDate / marketCalendarRatio ' +
@@ -537,7 +545,7 @@ export function registerSocialCalendarTools(
         'is the filtered list (locked rows included), unfilteredCount the view before filters, ' +
         'capUnknownCount the rows whose cap was not measured (on the calendar views). Paging uses ' +
         'limit / offset; truncated: true = more rows exist. available: false with reason ' +
-        '"tracker_not_enabled" (the three tracker views) means the tracker is switched off, not that ' +
+        '"tracker_not_enabled" (the tracker views) means the tracker is switched off, not that ' +
         'nothing is pending. An HTTP 503 FEATURE_DISABLED means the page is switched off, and the ' +
         'response then says nothing about any company\'s split. The data describes what is on file and' +
         ' carries no view on whether a split will happen, what it means for the price, or what anyone' +
@@ -551,7 +559,8 @@ export function registerSocialCalendarTools(
             'Which list: "upcoming" (effective tomorrow through 30 market days ahead; the ' +
             'calendar UNION the tracker), "recent" (effective in the past 30 days), ' +
             '"approved_no_date" (approved, no effective date stated yet), "vote_pending" ' +
-            '(proposed; the shareholder vote has not happened), "cancelled" (ended without taking ' +
+            '(proposed; the shareholder vote has not happened), "adjourned" (the meeting was adjourned ' +
+            'or postponed; the vote has not happened), "cancelled" (ended without taking ' +
             'effect in the past 90 days). Default "upcoming".',
           ),
         limit: z
@@ -601,10 +610,21 @@ export function registerSocialCalendarTools(
             'bermuda, delaware, other, or not_measured. Pro-only fact: on a non-Pro key it ' +
             'applies to unlocked rows only.',
           ),
+        q: z
+          .string()
+          .trim()
+          .min(1)
+          .max(64)
+          .optional()
+          .describe(
+            'Search text: keeps rows whose ticker STARTS with it or whose company name CONTAINS it ' +
+            '(case-insensitive; a leading "$" is ignored). Searches the whole view, locked rows ' +
+            'included (ticker and company name are public on them). Combine with limit / offset.',
+          ),
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ view, limit, offset, cap, type, exchange, board, domicile }) => {
+    async ({ view, limit, offset, cap, type, exchange, board, domicile, q }) => {
       const params: Record<string, string> = {};
       if (view !== undefined) params.view = view;
       if (limit !== undefined) params.limit = String(limit);
@@ -615,6 +635,7 @@ export function registerSocialCalendarTools(
       if (exchange && exchange.length > 0) params.exchange = exchange.join(',');
       if (board && board.length > 0) params.board = board.join(',');
       if (domicile && domicile.length > 0) params.domicile = domicile.join(',');
+      if (q !== undefined && q !== '') params.q = q;
       return toolHandler(() => client.get('/reverse-splits', params));
     },
   );

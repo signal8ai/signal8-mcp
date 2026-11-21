@@ -8,6 +8,7 @@
 
 import { createHash } from 'node:crypto';
 
+import { recordFreeTasterHeaders } from './free-taster.js';
 import { USER_AGENT } from './version.js';
 
 /**
@@ -53,7 +54,7 @@ export class Signal8ApiClient {
 
   /**
    * Stable, non-reversible identifier for the credential (sha256 hex), used to
-   * key per-credential caches such as the DilutionScan Pro check. Never log or
+   * key per-credential caches such as the DilutionScan plan check. Never log or
    * cache the raw key.
    */
   credentialFingerprint(): string {
@@ -121,6 +122,10 @@ export class Signal8ApiClient {
    * Parse the API response and extract data or throw an error.
    */
   private async parseResponse<T>(response: Response): Promise<T> {
+    // Free-taster count (free accounts only): handed to the tool wrapper,
+    // which shows it to the user (free-taster.ts). Never throws.
+    recordFreeTasterHeaders(response.headers);
+
     let body: unknown;
 
     try {

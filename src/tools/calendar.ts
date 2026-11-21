@@ -28,6 +28,54 @@ const isoDate = () =>
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be ISO YYYY-MM-DD');
 
 /**
+ * Widest `from`→`to` span `/calendar/economic` accepts. Mirrors
+ * `MAX_CALENDAR_WINDOW_DAYS` in backend/src/routes/api/v1/calendar.ts, which
+ * answers a wider window with a 400 ("Date window too large"). Pinned to the
+ * backend value by calendar.test.ts, which reads that file.
+ */
+export const MAX_ECONOMIC_WINDOW_DAYS = 366;
+
+/** Max tickers `/calendar/earnings` reads from `tickers` (the rest are dropped). */
+export const MAX_EARNINGS_TICKERS = 50;
+
+/** Page size cap of both vendor-backed calendars (`parsePaginationParams` maxLimit). */
+const MAX_CALENDAR_LIMIT = 500;
+
+const DAY_MS = 86_400_000;
+
+/** ISO date `days` after `iso` (UTC). */
+function addDaysIso(iso: string, days: number): string {
+  return new Date(Date.parse(`${iso}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
+}
+
+/**
+ * Clamp an economic-calendar window to MAX_ECONOMIC_WINDOW_DAYS. Returns the
+ * window actually requested plus, when it was shortened, a note the RESULT
+ * carries, so the caller is told the tail of its range was not read (never a
+ * silent clamp).
+ */
+export function clampEconomicWindow(
+  from: string,
+  to: string,
+): { from: string; to: string; clamped: null | { requestedTo: string; appliedTo: string; note: string } } {
+  const span = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS;
+  if (!Number.isFinite(span) || span <= MAX_ECONOMIC_WINDOW_DAYS) return { from, to, clamped: null };
+  const appliedTo = addDaysIso(from, MAX_ECONOMIC_WINDOW_DAYS);
+  return {
+    from,
+    to: appliedTo,
+    clamped: {
+      requestedTo: to,
+      appliedTo,
+      note:
+        `The window was shortened to ${MAX_ECONOMIC_WINDOW_DAYS} days (${from} to ${appliedTo}), the most one ` +
+        `call reads. Events after ${appliedTo} were NOT read; call again with from ${addDaysIso(appliedTo, 1)} ` +
+        'for the rest.',
+    },
+  };
+}
+
+/**
  * Register all 6 calendar / material-filings tools on the MCP server.
  */
 export function registerCalendarTools(server: McpServer, client: Signal8ApiClient): void {
@@ -46,19 +94,24 @@ export function registerCalendarTools(server: McpServer, client: Signal8ApiClien
         to: isoDate().describe('End date inclusive (YYYY-MM-DD)'),
         tickers: z
           .array(z.string().min(1))
+          .max(MAX_EARNINGS_TICKERS)
           .optional()
-          .describe('Optional ticker filter, e.g. ["AAPL","NVDA"]'),
+          .describe(`Optional ticker filter, e.g. ["AAPL","NVDA"] (at most ${MAX_EARNINGS_TICKERS})`),
         minMarketCap: z.number().optional().describe(
           'Minimum market cap in USD (e.g., 10000000000 for $10B+)',
         ),
         maxMarketCap: z.number().optional().describe(
           'Maximum market cap in USD (e.g., 2000000000 for under $2B)',
         ),
+        limit: z.number().int().min(1).max(MAX_CALENDAR_LIMIT).optional().describe(
+          `Max events returned (default 100, max ${MAX_CALENDAR_LIMIT}); the response's total counts every match.`,
+        ),
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ from, to, tickers, minMarketCap, maxMarketCap }) => {
+    async ({ from, to, tickers, minMarketCap, maxMarketCap, limit }) => {
       const params: Record<string, string> = { from, to };
+      if (limit !== undefined) params.limit = String(limit);
       if (tickers && tickers.length > 0) params.tickers = tickers.join(',');
       if (minMarketCap !== undefined) params.minMarketCap = String(minMarketCap);
       if (maxMarketCap !== undefined) params.maxMarketCap = String(maxMarketCap);
@@ -74,22 +127,37 @@ export function registerCalendarTools(server: McpServer, client: Signal8ApiClien
       description:
         'Get scheduled macro/economic events (CPI, FOMC, jobs reports, GDP, etc.) ' +
         'between two dates. Optionally filter to a single country (ISO-3166 alpha-2, ' +
-        'e.g. "US"). Defaults to US when omitted.',
+        `e.g. "US"). Defaults to US when omitted. One call covers at most ${MAX_ECONOMIC_WINDOW_DAYS} days: ` +
+        'a longer window is shortened to that span and the response says so in windowClamped.',
       inputSchema: z.object({
         from: isoDate().describe('Start date inclusive (YYYY-MM-DD)'),
-        to: isoDate().describe('End date inclusive (YYYY-MM-DD)'),
+        to: isoDate().describe(
+          `End date inclusive (YYYY-MM-DD), on or after from and at most ${MAX_ECONOMIC_WINDOW_DAYS} days after it`,
+        ),
         country: z
           .string()
           .length(2)
           .optional()
           .describe('Optional ISO-3166 alpha-2 country code (e.g. "US", "GB", "JP")'),
+        limit: z.number().int().min(1).max(MAX_CALENDAR_LIMIT).optional().describe(
+          `Max events returned (default 100, max ${MAX_CALENDAR_LIMIT}); the response's total counts every match.`,
+        ),
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ from, to, country }) => {
-      const params: Record<string, string> = { from, to };
-      if (country) params.country = country;
-      return toolHandler(() => client.get('/calendar/economic', params));
+    async ({ from, to, country, limit }) => {
+      const window = clampEconomicWindow(from, to);
+      const params: Record<string, string> = { from: window.from, to: window.to };
+      if (country) params.country = country.toUpperCase();
+      if (limit !== undefined) params.limit = String(limit);
+      return toolHandler(async () => {
+        const data = await client.get('/calendar/economic', params);
+        if (!window.clamped) return data;
+        // Visible clamp: the result says which part of the range was not read.
+        return data !== null && typeof data === 'object' && !Array.isArray(data)
+          ? { ...(data as Record<string, unknown>), windowClamped: window.clamped }
+          : { data, windowClamped: window.clamped };
+      });
     },
   );
 
@@ -214,10 +282,11 @@ export function registerCalendarTools(server: McpServer, client: Signal8ApiClien
         'M&A, executive changes, restructurings, etc.); pass `items` to filter to specific ' +
         '8-K item codes. Choose the universe with `universe`.',
       inputSchema: z.object({
+        // Required: /filings/recent-material answers a missing universe with a
+        // 400. It was declared optional, so an omitted universe always failed.
         universe: z
           .enum(['sp500', 'ndx', 'dji'])
-          .optional()
-          .describe('Index universe to scan (sp500, ndx, or dji).'),
+          .describe('Index universe to scan (required): sp500, ndx, or dji.'),
         items: z
           .array(z.string().regex(/^\d+\.\d+$/, 'Item code must match \\d+\\.\\d+'))
           .optional()

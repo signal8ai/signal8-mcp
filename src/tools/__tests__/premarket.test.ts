@@ -24,8 +24,9 @@ describe('premarket tools', () => {
     toolMap = new Map(server.tools.map((t) => [t.name, t]));
   });
 
-  it('registers both premarket tools with readOnlyHint + metadata', () => {
+  it('registers the premarket tools with readOnlyHint + metadata', () => {
     expect(server.tools.map((t) => t.name).sort()).toEqual([
+      'get_live_rvol',
       'get_premarket_scanner',
       'get_rvol_history',
     ]);
@@ -34,6 +35,20 @@ describe('premarket tools', () => {
       expect(typeof t.config.title).toBe('string');
       expect(typeof t.config.description).toBe('string');
       expect(t.config.inputSchema).toBeDefined();
+    }
+  });
+
+  it('get_live_rvol calls the rvol-live route with no params', async () => {
+    await toolMap.get('get_live_rvol')!.handler({ ticker: 'onfo' });
+    expect(client.get).toHaveBeenCalledWith('/companies/onfo/rvol-live');
+  });
+
+  it('get_rvol_history and get_live_rvol each point at the other for "today"', () => {
+    expect(toolMap.get('get_rvol_history')!.config.description).toContain('get_live_rvol');
+    expect(toolMap.get('get_rvol_history')!.config.description).toMatch(/never has a point for today/);
+    const live = toolMap.get('get_live_rvol')!.config.description as string;
+    for (const f of ['company page', 'shown', 'displayed', 'RVOL·TOD', 'RVOL·D', 'rvolTimeOfDay', 'rvolFullSession', 'avgVolumeByNow', 'avgFullSessionVolume', 'avgVolume30d', 'NOT MEASURED']) {
+      expect(live).toContain(f);
     }
   });
 

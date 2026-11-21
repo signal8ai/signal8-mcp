@@ -160,11 +160,13 @@ export function registerCashPositionTools(server: McpServer, client: Signal8ApiC
         industry: z.string().optional().describe(
           'Filter by company industry (exact match, e.g. "Biotechnology", "Software")',
         ),
-        limit: z.number().min(1).max(100).optional().describe(
-          'Maximum results to return (default: 25, max: 100)',
+        // /screener validates limit/offset as integers (creditApiScreenerQuerySchema,
+        // backend/src/services/screener-query-builder.ts): 2.5 is a 400.
+        limit: z.number().int().min(1).max(100).optional().describe(
+          'Maximum results to return, a whole number (default: 50, max: 100)',
         ),
-        offset: z.number().min(0).optional().describe(
-          'Offset for pagination (default: 0)',
+        offset: z.number().int().min(0).optional().describe(
+          'Offset for pagination, a whole number (default: 0)',
         ),
       }),
       annotations: { readOnlyHint: true },

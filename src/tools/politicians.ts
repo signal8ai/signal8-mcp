@@ -31,6 +31,34 @@ import { type Signal8ApiClient } from '../api-client.js';
 import { toolHandler } from './tool-handler.js';
 
 /**
+ * The slug shape every `/senate-insiders/:slug` route accepts. Mirrors
+ * `POLITICAL_SLUG_RE` (`isPoliticalSlug`) in
+ * backend/src/routes/senate-insiders-handlers.ts: a slug outside it is a 400
+ * ("Invalid congressional insider slug format"), so the schema states it up
+ * front instead of letting the call fail. Pinned by politicians.test.ts.
+ */
+export const POLITICIAN_SLUG_RE = /^(?:(?:sen|rep|exec)-)?[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+const SLUG_FORMAT =
+  ' Lowercase letters, digits and single hyphens only, exactly as returned by get_politicians ' +
+  '(a name with spaces or capitals is rejected).';
+
+function politicianSlug(description: string) {
+  return z
+    .string()
+    .regex(POLITICIAN_SLUG_RE, 'slug must be lowercase letters, digits and hyphens, e.g. "sen-ted-cruz"')
+    .describe(description + SLUG_FORMAT);
+}
+
+/**
+ * Ticker shape accepted by /senate-insiders/by-ticker/:ticker (after trim +
+ * upper-case): `^[A-Z][A-Z0-9.-]{0,9}$` in getRecentSenateTradesByTicker
+ * (backend/src/routes/senate-insiders-handlers.ts); anything else is a 400
+ * "Invalid ticker". A leading "$" is stripped by the handler below.
+ */
+export const BY_TICKER_RE = /^\s*\$?[A-Za-z][A-Za-z0-9.-]{0,9}\s*$/;
+
+/**
  * Register politician trading tools on the MCP server.
  *
  * @param server - McpServer instance
@@ -91,7 +119,7 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
         'filing delay metrics, most traded sector, and their 10 most recent transactions. The ' +
         'politician is identified by URL slug (e.g. "sen-nancy-pelosi").',
       inputSchema: z.object({
-        slug: z.string().describe(
+        slug: politicianSlug(
           'Politician URL slug (e.g., "sen-nancy-pelosi", "sen-tommy-tuberville")',
         ),
       }),
@@ -112,7 +140,7 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
         'disclosures with ticker, transaction type, amount range, filing delay, and late filing flag. ' +
         'Includes a summary with total buys/sells and net value.',
       inputSchema: z.object({
-        slug: z.string().describe('Politician URL slug (e.g., "sen-nancy-pelosi")'),
+        slug: politicianSlug('Politician URL slug (e.g., "sen-nancy-pelosi")'),
         type: z.enum(['Purchase', 'Sale']).optional().describe(
           "Filter by transaction type: 'Purchase' or 'Sale'",
         ),
@@ -153,7 +181,7 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
         'Includes buy/sell counts and values per period, most traded tickers (top 10), and ' +
         'transaction type breakdown. Useful for analyzing trading patterns over time.',
       inputSchema: z.object({
-        slug: z.string().describe('Politician URL slug (e.g., "sen-nancy-pelosi")'),
+        slug: politicianSlug('Politician URL slug (e.g., "sen-nancy-pelosi")'),
       }),
       annotations: { readOnlyHint: true },
     },
@@ -333,7 +361,7 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
         'committee oversight areas. The politician is identified by URL slug (e.g. ' +
         '"sen-nancy-pelosi").',
       inputSchema: z.object({
-        slug: z.string().describe(
+        slug: politicianSlug(
           'Politician URL slug (e.g., "sen-nancy-pelosi", "rep-nancy-pelosi")',
         ),
       }),
@@ -354,7 +382,7 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
         'policy area, introduced date, latest action, and public URL. The politician is identified by ' +
         'URL slug. Requires CONGRESS_API_KEY on the backend.',
       inputSchema: z.object({
-        slug: z.string().describe(
+        slug: politicianSlug(
           'Politician URL slug (e.g., "sen-nancy-pelosi")',
         ),
         limit: z.number().min(1).max(50).optional().describe(
@@ -390,7 +418,7 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
         'position (Yea/Nay/Not Voting), and result. Useful for assessing alignment between a ' +
         "politician's votes and their trading positions. Requires Bioguide ID resolution.",
       inputSchema: z.object({
-        slug: z.string().describe(
+        slug: politicianSlug(
           'Politician URL slug (e.g., "sen-nancy-pelosi")',
         ),
         limit: z.number().min(1).max(100).optional().describe(
@@ -431,7 +459,7 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
         'unrealizedPnlPercent); byTicker open positions double as the estimated holdings. All figures ' +
         'are estimates (±25-40% from disclosure bracket width).',
       inputSchema: z.object({
-        slug: z.string().describe('Politician URL slug: congressional ("sen-nancy-pelosi", "rep-...") or executive ("exec-trump-donald-j")'),
+        slug: politicianSlug('Politician URL slug: congressional ("sen-nancy-pelosi", "rep-...") or executive ("exec-trump-donald-j")'),
       }),
       annotations: { readOnlyHint: true },
     },
@@ -524,7 +552,7 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
         'Get committee leadership roles (Chair, Ranking Member, etc.) for a politician, identified by ' +
         'URL slug (e.g. "sen-nancy-pelosi").',
       inputSchema: z.object({
-        slug: z.string().describe('Politician URL slug (e.g., "sen-nancy-pelosi")'),
+        slug: politicianSlug('Politician URL slug (e.g., "sen-nancy-pelosi")'),
       }),
       annotations: { readOnlyHint: true },
     },
@@ -544,7 +572,7 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
         'position, and result.',
       inputSchema: z.object({
         limit: z.number().min(1).max(100).optional().describe(
-          'Maximum results to return (default: 50, max: 100)',
+          'Maximum results to return (default: 20, max: 100)',
         ),
         offset: z.number().min(0).optional().describe('Pagination offset (default: 0)'),
       }),
@@ -734,11 +762,14 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
       title: 'Get Senate Trades by Ticker',
       description:
         'Reverse lookup: which politicians recently traded a given ticker. Returns recent STOCK Act ' +
-        'disclosures for that symbol with politician info, transaction type, and amount.',
+        'disclosures for that symbol with politician info, transaction type, and amount, covering ' +
+        'trades in the last 180 days.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "NVDA")'),
+        ticker: z.string().regex(BY_TICKER_RE, 'ticker must be 1-10 characters: a letter, then letters, digits, "." or "-"').describe(
+          'Stock ticker symbol (e.g., "AAPL", "BRK.B"): 1-10 characters, starting with a letter',
+        ),
         limit: z.number().min(1).max(100).optional().describe(
-          'Maximum results to return (default: 50, max: 100)',
+          'Maximum results to return (default: 10, max: 100)',
         ),
         offset: z.number().min(0).optional().describe('Pagination offset (default: 0)'),
       }),
@@ -753,7 +784,7 @@ export function registerPoliticianTools(server: McpServer, client: Signal8ApiCli
       }
       return toolHandler(() =>
         client.get(
-          `/senate-insiders/by-ticker/${encodeURIComponent(ticker)}/recent-trades`,
+          `/senate-insiders/by-ticker/${encodeURIComponent(ticker.trim().replace(/^\$/, ''))}/recent-trades`,
           queryParams,
         ),
       );

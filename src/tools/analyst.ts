@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod/v3';
+import { companyIdSchema } from './company-identifier.js';
 import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Signal8ApiClient } from '../api-client.js';
 import { toolHandler } from './tool-handler.js';
@@ -28,7 +29,7 @@ export function registerAnalystTools(server: McpServer, client: Signal8ApiClient
         'Get recent analyst grade actions (upgrades, downgrades, initiations) for a ticker, ' +
         'including the grading firm and previous/new grade.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
         limit: z.number().min(1).max(50).optional().describe(
           'Maximum results to return (default: 10, max: 50)',
         ),
@@ -53,7 +54,7 @@ export function registerAnalystTools(server: McpServer, client: Signal8ApiClient
         'split-adjusted average price target. Set list=true to return the full per-analyst ' +
         'list of individual price targets instead.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
         list: z.boolean().optional().describe(
           'false/omitted = consensus price target; true = per-analyst price-target list',
         ),
@@ -84,7 +85,7 @@ export function registerAnalystTools(server: McpServer, client: Signal8ApiClient
         'Get aggregated analyst coverage for a ticker: a consolidated view of grades, targets and ' +
         'coverage breadth across covering firms.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
       }),
       annotations: { readOnlyHint: true },
     },

@@ -79,6 +79,23 @@ const SEARCH_SEC_FILINGS_PARAMS = [
   'sectors', 'industries', 'exchanges', 'companyTypes', 'foreignIssuer', 'recentIpo',
 ] as const;
 
+/**
+ * Longest phrase `/edgar/search-text` accepts (MAX_SEARCH_PATTERN_LENGTH in
+ * backend/src/routes/api/v1/edgar.ts; longer is a 400). Pinned by test.
+ */
+export const MAX_SEARCH_PHRASE_LENGTH = 2000;
+
+/**
+ * The phrase `search_filing_text` searches for: `pattern`, else its aliases
+ * `q` / `query` (first non-blank wins). null when none has 2+ characters.
+ */
+export function resolveSearchPhrase(...candidates: (string | undefined)[]): string | null {
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.trim().length >= 2) return c;
+  }
+  return null;
+}
+
 export function registerEdgarTools(server: McpServer, client: Signal8ApiClient): void {
   server.registerTool(
     'screen_sec_filings',
@@ -452,13 +469,23 @@ export function registerEdgarTools(server: McpServer, client: Signal8ApiClient):
         'was searched) and exhibitTypes (EX-10 …). ' +
         ARCHIVE_SCOPE,
       inputSchema: z.object({
-        pattern: z.string().min(2).describe(
-          'Search query (minimum 2 characters): "exact phrase", OR, -exclude, w1 NEAR/n w2, word*, $TICKER. ' +
+        // 🔴 `pattern` is the original name and stays (public MCP: never
+        // rename). Every other search tool calls its phrase `q` or `query`,
+        // so models sent `{q: ...}` here and failed MCP validation
+        // ("pattern: Required", 3x on prod 2026-11). Both are accepted as
+        // aliases; exactly one phrase is needed.
+        pattern: z.string().min(2).max(MAX_SEARCH_PHRASE_LENGTH).optional().describe(
+          'THE SEARCH PHRASE (required: pass it here, or as q / query, which are aliases of this field). ' +
+          'Minimum 2 characters: "exact phrase", OR, -exclude, w1 NEAR/n w2, word*, $TICKER. ' +
           'A CIK/filing-scoped search whose text is not indexed yet falls back to a literal ' +
           'case-insensitive substring match (response engine: "substring"); there each "quoted phrase" ' +
           'and bare word must appear (quotes stripped), and meta.substringTerms lists the terms matched. ' +
           'OR, NEAR, -exclude and word* are not applied on that path.',
         ),
+        q: z.string().min(2).max(MAX_SEARCH_PHRASE_LENGTH).optional().describe(
+          'Alias of pattern (the search phrase), for callers used to search_sec_filings.q. Use one of pattern / q / query.',
+        ),
+        query: z.string().min(2).max(MAX_SEARCH_PHRASE_LENGTH).optional().describe('Alias of pattern (the search phrase). Use one of pattern / q / query.'),
         cik: z.string().optional().describe('Filter to a specific company by CIK number'),
         filingId: z.string().optional().describe('Filter to a specific filing by internal ID'),
         accessionNumber: z.string().optional().describe('Filter to a specific filing by SEC accession number'),
@@ -490,11 +517,19 @@ export function registerEdgarTools(server: McpServer, client: Signal8ApiClient):
       annotations: { readOnlyHint: true },
     },
     async ({
-      pattern, cik, filingId, accessionNumber, formType, limit, snippetLength, sort, match, understand, facets,
-      section, exhibitTypes, matchedSections,
+      pattern: patternArg, q, query, cik, filingId, accessionNumber, formType, limit, snippetLength, sort, match,
+      understand, facets, section, exhibitTypes, matchedSections,
     }) =>
-      toolHandler(() =>
-        client.get('/edgar/search-text', {
+      toolHandler(() => {
+        const pattern = resolveSearchPhrase(patternArg, q, query);
+        if (pattern === null) {
+          return Promise.reject(new Error(
+            'search_filing_text needs the search phrase in `pattern` (or its alias `q` / `query`), at least ' +
+            '2 characters. To scope to one company put $TICKER in the phrase or pass cik; to one filing pass ' +
+            'accessionNumber or filingId.',
+          ));
+        }
+        return client.get('/edgar/search-text', {
           pattern,
           ...(cik ? { cik } : {}),
           ...(filingId ? { filingId } : {}),
@@ -510,8 +545,8 @@ export function registerEdgarTools(server: McpServer, client: Signal8ApiClient):
           ...(section ? { section } : {}),
           ...(exhibitTypes ? { exhibitTypes } : {}),
           ...(matchedSections === false ? { matchedSections: 'false' } : {}),
-        }),
-      ),
+        });
+      }),
   );
 
   server.registerTool(

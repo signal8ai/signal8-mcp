@@ -71,10 +71,12 @@ describe('SplitScanner tool set', () => {
     expect(SPLITSCANNER_TOOLS.filter((t) => !live.has(t))).toEqual([]);
   });
 
-  it('has no duplicates and registers exactly the curated list (23 tools)', () => {
+  it('has no duplicates and registers exactly the curated list (24 tools)', () => {
     expect(new Set(SPLITSCANNER_TOOLS).size).toBe(SPLITSCANNER_TOOLS.length);
-    expect(names(SPLITSCANNER_BRAND)).toEqual([...SPLITSCANNER_TOOLS].sort());
-    expect(SPLITSCANNER_TOOLS).toHaveLength(23);
+    expect(names(SPLITSCANNER_BRAND)).toEqual([...SPLITSCANNER_TOOLS, 'get_signal8_pro_coverage'].sort());
+    expect(SPLITSCANNER_TOOLS).toHaveLength(24);
+    // Recently delisted joined the curated list 2026-11-17.
+    expect(SPLITSCANNER_TOOLS).toContain('get_recently_delisted');
   });
 
   it('is reverse-split only: none of the dilution, politics, donor, institution or screener surface', () => {
@@ -136,7 +138,7 @@ describe('SplitScanner tool set', () => {
   });
 
   it('the other two brands are unchanged by this one', () => {
-    expect(names(DILUTIONSCAN_BRAND)).toHaveLength(34);
+    expect(names(DILUTIONSCAN_BRAND)).toHaveLength(37); // 36 curated (get_underwriter_stats, get_recently_delisted added 2026-11-17) + get_signal8_pro_coverage
     expect(names(SIGNAL8_BRAND).length).toBeGreaterThan(100);
   });
 
@@ -159,16 +161,16 @@ describe('SplitScanner tool set', () => {
     expect(text).not.toMatch(/DilutionScan/);
   });
 
-  it('DilutionScan denial copy is byte-identical to before (planPhrase refactor)', () => {
+  it('DilutionScan denial copy names the DilutionScan plan or Signal8 Pro (there is no DilutionScan Pro)', () => {
     const p = JSON.parse(proRequiredDenial(DILUTIONSCAN_BRAND, 'free').content[0]!.text);
     expect(p.error).toBe(
-      'DilutionScan MCP is included with DilutionScan Pro. This account is on the Free plan, so its tools are not available. Upgrade at https://dilutionscan.com/pricing, then call the tool again.',
+      'DilutionScan MCP is included with the DilutionScan plan or Signal8 Pro. This account is on the Free plan, so its tools are not available. Upgrade at https://dilutionscan.com/pricing, then call the tool again.',
     );
-    // 2026-11-07: the DilutionScan plan field is advertised, the COPY is unchanged (the plan sells
-    // behind a fail-closed toggle this process cannot read, so the text must not name it).
+    // 2026-11-11: the copy names the DilutionScan plan (live on prod, dilutionscan_plan_checkout ON)
+    // alongside Signal8 Pro; "DilutionScan Pro" was never a plan.
     expect(p.alsoAccepted).toBe('dilutionscanAccess');
     const a = JSON.parse(authRequiredDenial(DILUTIONSCAN_BRAND).content[0]!.text);
-    expect(a.error).toContain('needs a signed-in DilutionScan Pro account.');
+    expect(a.error).toContain('needs a signed-in DilutionScan or Signal8 Pro account.');
   });
 });
 
@@ -280,11 +282,11 @@ describe('SplitScanner server end to end', () => {
     return client;
   }
 
-  it('identifies as SplitScanner, lists the 23 tools, no prompts, no resources, and listing costs no backend call', async () => {
+  it('identifies as SplitScanner, lists the 24 tools, no prompts, no resources, and listing costs no backend call', async () => {
     const client = await connect('sk_live_x');
     expect(client.getServerVersion()?.name).toBe('splitscanner-mcp');
     expect(client.getInstructions()).toContain('SplitScanner');
-    expect((await client.listTools()).tools.map((t) => t.name).sort()).toEqual([...SPLITSCANNER_TOOLS].sort());
+    expect((await client.listTools()).tools.map((t) => t.name).sort()).toEqual([...SPLITSCANNER_TOOLS, 'get_signal8_pro_coverage'].sort());
     expect(client.getServerCapabilities()?.prompts).toBeUndefined();
     expect(client.getServerCapabilities()?.resources).toBeUndefined();
     expect(calls).toEqual([]);

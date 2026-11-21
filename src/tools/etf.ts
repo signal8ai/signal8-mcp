@@ -30,7 +30,8 @@ export function registerEtfTools(server: McpServer, client: Signal8ApiClient): v
         ticker: z.string().describe('ETF ticker symbol (e.g., SPY, QQQ, IWM)'),
         include: z.string().optional().describe(
           'Comma-separated list of data types to include. ' +
-          'Available: profile,holdings,sectors,countries,stock-summary,performance,news,analyst,comparables. ' +
+          'Available: profile,holdings,sectors,countries,stock-summary,performance,news,analyst,comparables,' +
+          'dividends,institutional-holdings,candles. Any other value is rejected. ' +
           'Default (when omitted): profile,stock-summary,holdings,sectors',
         ),
       }),

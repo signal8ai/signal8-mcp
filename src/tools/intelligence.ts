@@ -27,10 +27,28 @@
  */
 
 import { z } from 'zod/v3';
+import { companyIdSchema } from './company-identifier.js';
 import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Signal8ApiClient } from '../api-client.js';
 import { toolHandler } from './tool-handler.js';
 import { shapeClusterBuys } from './output-shaping.js';
+
+/**
+ * Transaction codes `/intelligence/:ticker/insider-transactions` accepts
+ * (`VALID_CODES`, backend/src/routes/api/v1/intelligence.ts). Any other code is
+ * a 400, so the schema states the same set. Exported for the drift test.
+ */
+export const INSIDER_TRANSACTION_CODES = [
+  'P', 'S', 'A', 'M', 'F', 'G', 'C', 'W', 'J', 'K', 'L', 'U', 'H', 'D', 'I', 'O', 'Z',
+] as const;
+const INSIDER_TRANSACTION_CODE_RE = new RegExp(`^[${INSIDER_TRANSACTION_CODES.join('')}]$`, 'i');
+
+/**
+ * `transactionType` values `/intelligence/insiders/cross-company` accepts
+ * (`CROSS_COMPANY_TRANSACTION_TYPES`, same backend file). Exported for the drift test.
+ */
+export const CROSS_COMPANY_TRANSACTION_TYPES = ['P', 'S', 'A', 'M', 'F', 'G', 'D', 'C', 'X'] as const;
+const CROSS_COMPANY_TRANSACTION_TYPE_RE = new RegExp(`^[${CROSS_COMPANY_TRANSACTION_TYPES.join('')}]$`, 'i');
 
 /**
  * Register intelligence-related tools on the MCP server.
@@ -91,10 +109,10 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
         'excludes tax withholding), and isPrimarilyTaxWithholding flag to distinguish routine ' +
         'RSU vesting from discretionary selling. Supports pagination with limit/offset.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
+        ticker: companyIdSchema,
         limit: z.number().int().min(1).max(100)
           .optional()
-          .describe('Maximum results to return (default: 20, max: 100)'),
+          .describe('Maximum results to return (default: 100, max: 100)'),
         offset: z.number().int().min(0)
           .optional()
           .describe('Offset for pagination (default: 0)'),
@@ -139,7 +157,7 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
         'filing; `staleFiling.ageMonths` marks a row with none. `stalePercentOfOutstanding: null` is not ' +
         'measurable, not zero.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
+        ticker: companyIdSchema,
         limit: z.number().int().min(1).max(100)
           .optional()
           .describe('Maximum holders to return in allHolders (default: 100, max: 100)'),
@@ -203,7 +221,7 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
         'positions in this stock based on SEC 13F filings, including shares held, portfolio weight, ' +
         'and filing dates. Useful for understanding institutional ownership concentration.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
+        ticker: companyIdSchema,
         limit: z.number().min(1).max(100).optional().describe(
           'Maximum results to return (default: 20, max: 100)',
         ),
@@ -357,12 +375,20 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
         'with pagination and sorting.',
       inputSchema: z.object({
         cik: z.string().describe('SEC CIK number of the institution'),
-        period: z.string().optional().describe('Filing period to filter (e.g., "2025-Q1")'),
+        // The route compares this to the DATE column period_of_report
+        // (backend/src/routes/institutions-handlers.ts getInstitutionDerivatives):
+        // a quarter label like "2025-Q1" is not a date and fails the query (500).
+        period: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'period must be a quarter-end date, YYYY-MM-DD').optional().describe(
+          '13F report period as its quarter-end date, YYYY-MM-DD (e.g., "2025-03-31" for Q1 2025). ' +
+          'Default: the latest period. A quarter label such as "2025-Q1" is not accepted.',
+        ),
         limit: z.number().min(1).max(100).optional().describe(
-          'Maximum results to return (default: 20)',
+          'Maximum results to return (default: 50, max: 100)',
         ),
         offset: z.number().min(0).optional().describe('Offset for pagination (default: 0)'),
-        sortBy: z.string().optional().describe('Column to sort by'),
+        sortBy: z.string().optional().describe(
+          'Sort column: "value" (default) or "shares". Any other value sorts by value.',
+        ),
         sortOrder: z.enum(['asc', 'desc']).optional().describe('Sort direction'),
       }),
       annotations: { readOnlyHint: true },
@@ -455,9 +481,13 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
         '(securityTitle + directOrIndirect + natureOfOwnership), not the insider\'s total position; insiders ' +
         'often report several lines, so one row is not a basis for a "% of position" figure. ' +
         'holdingsByInsider lists every line with its as-of filing; its sumOfReportedLines is not ' +
-        'beneficial ownership (lines can be stale). A trade re-reported in a later filing is listed once.',
+        'beneficial ownership (lines can be stale). A trade re-reported in a later filing is listed once. ' +
+        'plan10b5_1Box is the filing\'s Rule 10b5-1(c) checkbox as filed (true/false). null means Signal8 has ' +
+        'not yet read the box for that filing, which is neither "no plan" nor unknowable: a Form 4 filed since ' +
+        'April 2023 prints the box on the form itself, readable from the filing document by its accession. ' +
+        'footnoteMentions10b5_1 says a footnote or remark mentions Rule 10b5-1 (a mention, not a mark).',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
+        ticker: companyIdSchema,
         limit: z.number().min(1).max(100).optional().describe(
           'Maximum results to return (default: 20, max: 100)',
         ),
@@ -470,8 +500,16 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
         month: z.number().int().min(1).max(12).optional().describe(
           'Filter by transaction month (1-12, requires year)',
         ),
-        transactionCode: z.string().length(1).regex(/^[A-Z]$/).optional().describe(
-          'Filter by SEC transaction code: P=Purchase, S=Sale, A=Grant/Award, M=Exercise/Conversion, F=Tax withholding, G=Gift, C=Conversion, W=Will, D=Disposition to issuer, etc.',
+        // Exactly the codes the route accepts (VALID_CODES in
+        // backend/src/routes/api/v1/intelligence.ts, /:ticker/insider-transactions);
+        // any other letter is a 400. Lower case is accepted (the route upper-cases).
+        transactionCode: z.string().length(1).regex(
+          INSIDER_TRANSACTION_CODE_RE,
+          `transactionCode must be one of ${INSIDER_TRANSACTION_CODES.join(', ')}`,
+        ).optional().describe(
+          'Filter by SEC transaction code, one of ' + INSIDER_TRANSACTION_CODES.join(', ') + ': P=Purchase, ' +
+          'S=Sale, A=Grant/Award, M=Exercise/Conversion, F=Tax withholding, G=Gift, C=Conversion, W=Will, ' +
+          'D=Disposition to issuer, J=Other. Other letters (e.g. X) are rejected.',
         ),
       }),
       annotations: { readOnlyHint: true },
@@ -498,7 +536,7 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
         'unpricedPurchaseCount > 0) and the deduped purchases. `asOf` and `lookback` state the ' +
         'date range covered; clusterBuyingDetected false means none in that range only.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
+        ticker: companyIdSchema,
         days: z.union([z.literal(7), z.literal(30), z.literal(90)]).optional().describe(
           'Lookback in days by transaction date: 7, 30 or 90 (default 90)',
         ),
@@ -531,7 +569,7 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
           'Minimum AUM in USD to filter institutions (e.g., 1000000000 for $1B+)',
         ),
         limit: z.number().min(1).max(100).optional().describe(
-          'Maximum results to return (default: 25, max: 100)',
+          'Maximum results to return (default: 50, max: 100)',
         ),
         offset: z.number().min(0).optional().describe(
           'Offset for pagination (default: 0)',
@@ -638,12 +676,20 @@ export function registerIntelligenceTools(server: McpServer, client: Signal8ApiC
         insiderName: z.string().optional().describe(
           'Filter by insider name (partial match, e.g., "Musk" or "Cohen")',
         ),
-        transactionType: z.string().optional().describe(
-          'Filter by transaction type: "P" (purchase), "S" (sale), "A" (grant/award), "M" (conversion)',
+        // Exactly CROSS_COMPANY_TRANSACTION_TYPES in
+        // backend/src/routes/api/v1/intelligence.ts; any other value is a 400.
+        transactionType: z.string().trim().regex(
+          CROSS_COMPANY_TRANSACTION_TYPE_RE,
+          `transactionType must be one of ${CROSS_COMPANY_TRANSACTION_TYPES.join(', ')}`,
+        ).optional().describe(
+          'Filter by transaction type, one of ' + CROSS_COMPANY_TRANSACTION_TYPES.join(', ') + ' (default P): ' +
+          '"P" (purchase), "S" (sale), "A" (grant/award), "M" (exercise/conversion), "F" (tax withholding), ' +
+          '"G" (gift), "D" (disposition to issuer), "C" (conversion), "X" (option exercise). Other values are rejected.',
         ),
         startDate: z.string().optional().describe(
           'Start date, YYYY-MM-DD (e.g., "2025-01-01"); a full ISO timestamp is cut to its date. ' +
-          'Either bound may be given alone. An unparseable date is rejected, never ignored.',
+          'Either bound may be given alone; with both, startDate must be on or before endDate. An ' +
+          'unparseable date is rejected, never ignored. With no dates the lookback is the last 90 days.',
         ),
         endDate: z.string().optional().describe(
           'End date, YYYY-MM-DD (e.g., "2025-12-31"); a full ISO timestamp is cut to its date.',

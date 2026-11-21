@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod/v3';
+import { companyIdSchema } from './company-identifier.js';
 import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Signal8ApiClient } from '../api-client.js';
 import { toolHandler } from './tool-handler.js';
@@ -29,11 +30,15 @@ export function registerCompanyTools(server: McpServer, client: Signal8ApiClient
     {
       title: 'Search Companies',
       description:
-        'Search for companies by name or ticker symbol in the Signal8 database. ' +
-        'Returns matching companies with their ticker, name, CIK, and exchange.',
+        'Search for companies by name, ticker symbol or SEC CIK in the Signal8 database. ' +
+        'Returns matching companies with their ticker, name, CIK, and exchange. ' +
+        'A numeric query is matched as a CIK (`matchedBy: "cik"`). A ticker no company holds today ' +
+        'is matched as a FORMER symbol of a renamed or delisted company (`matchedBy: "former_symbol"`, ' +
+        'e.g. "MIGI" finds Big Digital Energy, now BGDE); a delisted company has `currentSymbol: null` ' +
+        'and empty `tickers`.',
       inputSchema: z.object({
-        query: z.string().describe(
-          'Search query - company name or ticker symbol (e.g., "Tesla", "TSLA")',
+        query: z.string().trim().min(1).max(200).describe(
+          'Search query - company name, ticker symbol or CIK (e.g., "Tesla", "TSLA", "1318605"); 1-200 characters',
         ),
         limit: z.number().min(1).max(50).optional().describe(
           'Maximum results to return (default: 10, max: 50)',
@@ -83,7 +88,7 @@ export function registerCompanyTools(server: McpServer, client: Signal8ApiClient
     {
       title: 'Get Company Profile',
       description:
-        'Get an enriched company profile by ticker symbol. Returns CIK, exchange, sector, ' +
+        'Get an enriched company profile by ticker symbol, former ticker or SEC CIK. Returns CIK, exchange, sector, ' +
         'industry, market cap, employee count, description, and other fundamental data in a ' +
         'lightweight response. Includes halted/haltCode/haltedAt trading-halt status on every call ' +
         '(false/null when trading normally); a halted-but-listed ticker reports delisted:false. ' +
@@ -93,7 +98,7 @@ export function registerCompanyTools(server: McpServer, client: Signal8ApiClient
         '`cik: null` is a foreign issuer listed on US OTC that files nothing with the SEC (e.g. PGPHF): name, exchange ' +
         'and country come from reference data and every field Signal8 lacks is null.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
+        ticker: companyIdSchema,
       }),
       annotations: { readOnlyHint: true },
     },

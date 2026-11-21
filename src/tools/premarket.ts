@@ -1,8 +1,9 @@
 /**
  * Premarket / RVOL MCP Tools (feature-2300 / task-2300)
  *
- * Two tools closing gap-doc query classes 1–3:
- *   - get_rvol_history       GET /companies/:ticker/rvol-history (per-day session RVOL series)
+ * Tools closing gap-doc query classes 1–3:
+ *   - get_rvol_history       GET /companies/:ticker/rvol-history (per-day session RVOL series, completed sessions)
+ *   - get_live_rvol          GET /companies/:ticker/rvol-live (live RVOL, the company page / Terminal figures)
  *   - get_premarket_scanner  GET /premarket/scanner (live premarket scanner rows)
  *
  * NOTE: `Signal8ApiClient.baseUrl` already includes `/api/v1/public`, so paths
@@ -14,12 +15,13 @@
  */
 
 import { z } from 'zod/v3';
+import { companyIdSchema } from './company-identifier.js';
 import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Signal8ApiClient } from '../api-client.js';
 import { toolHandler } from './tool-handler.js';
 
 /**
- * Register both premarket / RVOL tools on the MCP server.
+ * Register the premarket / RVOL tools on the MCP server.
  */
 export function registerPremarketTools(server: McpServer, client: Signal8ApiClient): void {
 
@@ -43,9 +45,11 @@ export function registerPremarketTools(server: McpServer, client: Signal8ApiClie
         '30-session average full-day volume, null when no full-day denominator exists) and ' +
         '"advDays" (its sample size), which give a magnitude to points RVOL cannot rate. ' +
         'advRatio is not an RVOL: it compares a partial session to a whole day, so it is ' +
-        'typically well under 1 and is not comparable to rvol.',
+        'typically well under 1 and is not comparable to rvol. COMPLETED SESSIONS ONLY: the ' +
+        'newest point is the previous trading day (the rollups land ~12:10 ET the next day), ' +
+        'so this tool never has a point for today. For the RVOL right now, use get_live_rvol.',
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "AAPL", "TSLA")'),
+        ticker: companyIdSchema,
         session: z
           .enum(['premarket', 'regular', 'afterhours', 'all'])
           .optional()
@@ -103,6 +107,37 @@ export function registerPremarketTools(server: McpServer, client: Signal8ApiClie
         client.get(`/companies/${encodeURIComponent(ticker)}/rvol-history`, params),
       );
     },
+  );
+
+  // ── Live RVOL ────────────────────────────────────────────────
+  server.registerTool(
+    'get_live_rvol',
+    {
+      title: 'Get Live RVOL',
+      description:
+        "Get a ticker's relative volume (RVOL) right now, EXACTLY as the Signal8 company page " +
+        'and Terminal show it (same data, same rule). Use this for "what is $X\'s RVOL today / ' +
+        'right now"; get_rvol_history only covers completed sessions and never has today. ' +
+        '"session" is pre-market, open, after-hours or closed. "shown" is the one VOL + RVOL ' +
+        'on screen now: in pre-market the time-of-day RVOL ("RVOL·TOD") when measured, else ' +
+        'the full-session one; from the open, today\'s volume / the 30-day average daily ' +
+        'volume ("RVOL·D"). "displayed" lists the RVOL cells the Terminal draws, in order: ' +
+        'pre-market RVOL·TOD then RVOL·D, from the open RVOL·D only. "premarket" (today\'s ' +
+        '04:00-09:30) has ' +
+        '"rvolTimeOfDay" (vs the average traded by this time of morning, with its 15-minute ' +
+        '"cutoff"), "rvolFullSession" (vs the average FULL pre-market), "avgVolumeByNow" and ' +
+        '"avgFullSessionVolume". "day" has "volume", "rvol" (RVOL·D, null before the open) ' +
+        'and "avgVolume30d". Every RVOL carries its "label" and a "note" naming its ' +
+        'denominator; RVOL·TOD and RVOL·D differ by orders of magnitude early in the morning ' +
+        'and are not interchangeable. "found": false means no live row for the ticker. Null ' +
+        'means NOT MEASURED, never zero volume.',
+      inputSchema: z.object({
+        ticker: companyIdSchema,
+      }).shape,
+      annotations: { readOnlyHint: true },
+    },
+    async ({ ticker }) =>
+      toolHandler(() => client.get(`/companies/${encodeURIComponent(ticker)}/rvol-live`)),
   );
 
   // ── Premarket Scanner ────────────────────────────────────────

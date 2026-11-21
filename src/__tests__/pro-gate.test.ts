@@ -57,6 +57,26 @@ describe('createProGate', () => {
     expect(codeOf(await createProGate(client(), DILUTIONSCAN_BRAND)())).toBe('AUTH_REQUIRED');
   });
 
+  it('403 PRO_REQUIRED from the backend (no API plan) is PRO_REQUIRED on Free with the upgrade link, and is cached', async () => {
+    reply(403, {
+      error: { code: 'PRO_REQUIRED', message: 'no plan', details: { upgradeUrl: 'https://dilutionscan.com/pricing' } },
+    });
+    const gate = createProGate(client(), DILUTIONSCAN_BRAND);
+    const r = await gate();
+    expect(codeOf(r)).toBe('PRO_REQUIRED');
+    const payload = JSON.parse((r as { content: Array<{ text: string }> }).content[0]!.text);
+    expect(payload.currentTier).toBe('free');
+    expect(payload.upgradeUrl).toBe(DILUTIONSCAN_BRAND.upgradeUrl);
+    expect(payload.error).not.toMatch(/temporary|try the call again in a moment/i);
+    expect(codeOf(await gate())).toBe('PRO_REQUIRED');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('a 403 with any other code still fails CLOSED as ENTITLEMENT_UNAVAILABLE', async () => {
+    reply(403, { error: { code: 'FORBIDDEN', message: 'x' } });
+    expect(codeOf(await createProGate(client(), DILUTIONSCAN_BRAND)())).toBe('ENTITLEMENT_UNAVAILABLE');
+  });
+
   it.each([
     ['503', () => reply(503, { error: { code: 'ENTITLEMENT_UNAVAILABLE', message: 'x' } })],
     ['404 (backend predates the endpoint)', () => reply(404, { error: 'Not found' })],

@@ -212,7 +212,10 @@ export function registerMarketTools(server: McpServer, client: Signal8ApiClient)
         limit: z.number().int().min(1).max(50).optional()
           .describe('Maximum items to return (1-50). Defaults to 10.'),
         significance: z.string().optional()
-          .describe('CSV of levels to include, e.g. "critical,major" (default) or "critical,major,standard".'),
+          .describe(
+            'CSV of levels to include, e.g. "critical,major" (default) or "critical,major,standard". Only ' +
+              'critical, major and standard exist; any other value is rejected.',
+          ),
       }),
       annotations: { readOnlyHint: true },
     },
@@ -258,7 +261,7 @@ export function registerMarketTools(server: McpServer, client: Signal8ApiClient)
       title: 'Get Active Trading Halts',
       description:
         'List securities currently halted across NASDAQ/NYSE/AMEX (from the consolidated ' +
-        'Nasdaq Trader halt feed). Each halt includes ticker, market, haltCode ' +
+        'exchange halt list). Each halt includes ticker, market, haltCode ' +
         '(T1/T2/T12/LUDP/H10/...), human-readable reason, haltedAt, haltAgeDays, and the ' +
         'scheduled resumptionAt when one is set. `halts` holds halts that began within the ' +
         `last ${LONG_RUNNING_HALT_DAYS} days; \`longRunningHalts\` holds older halts the feed still lists ` +

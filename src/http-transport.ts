@@ -33,7 +33,8 @@ import {
   type BrandId,
   type McpBrand,
 } from './brand.js';
-import { isDiscoveryOnly } from './discovery-methods.js';
+import { browserLandingUrl } from './browser-landing.js';
+import { isDiscoveryOnly, requiresUpfrontAuth } from './discovery-methods.js';
 import { createMcpServer } from './server.js';
 import { VERSION } from './version.js';
 
@@ -307,7 +308,10 @@ app.post('/mcp', async (req: Request, res: Response) => {
   // method (or a missing/unknown one) still gets the RFC 9728 401 challenge so
   // the Bearer/OAuth requirement (and tool-call billing) is preserved.
   const authHeader = req.headers.authorization;
-  if (!authHeader && !isDiscoveryOnly(req.body)) {
+  // Grok's connector client decides on OAuth from its FIRST anonymous request
+  // and never asks again, so it gets the challenge even for discovery
+  // (requiresUpfrontAuth). Every other client keeps anonymous discovery.
+  if (!authHeader && (!isDiscoveryOnly(req.body) || requiresUpfrontAuth(req.headers['user-agent'], req.body))) {
     sendAuthChallenge(req, res);
     return;
   }
@@ -348,8 +352,21 @@ app.post('/mcp', async (req: Request, res: Response) => {
 /**
  * MCP Streamable HTTP endpoint (GET).
  * Used for SSE streaming in stateful mode. Not applicable in stateless mode.
+ *
+ * A plain browser navigation (directory backlinks to this URL) is 301'd to the
+ * brand's human landing page instead; every MCP client shape still gets the
+ * 405. The predicate and its reasons live in browser-landing.ts.
  */
-app.get('/mcp', (_req: Request, res: Response) => {
+app.get('/mcp', (req: Request, res: Response) => {
+  const landing = browserLandingUrl(brandOf(req).id, req.method, req.headers);
+  if (landing) {
+    // The answer depends on Accept, so say so; no-store keeps a cached 301
+    // from ever outliving this rule in a browser or an intermediary.
+    res.setHeader('Vary', 'Accept');
+    res.setHeader('Cache-Control', 'no-store');
+    res.redirect(301, landing);
+    return;
+  }
   res.status(405).json({
     jsonrpc: '2.0',
     error: { code: -32601, message: 'Method not allowed. Use POST for stateless mode.' },

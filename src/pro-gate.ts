@@ -15,6 +15,14 @@
  *   - 200 proAccess:false     ⇒ PRO_REQUIRED naming the current tier (cached 30s,
  *                               so an upgrade takes effect within half a minute)
  *   - 401                     ⇒ AUTH_REQUIRED (bad or expired key / token)
+ *   - 403 code PRO_REQUIRED   ⇒ PRO_REQUIRED, Free (cached 30s). Since 2026-11-10
+ *                               `api-key-auth.ts` refuses EVERY call from an
+ *                               account with no API plan with that 403, the
+ *                               entitlement check included, before the account
+ *                               router can answer 200 proAccess:false. The
+ *                               backend only sends it after a SUCCESSFUL plan
+ *                               lookup (a failed one falls through), so it is a
+ *                               real "no plan", not a blip.
  *   - anything else / network ⇒ ENTITLEMENT_UNAVAILABLE, retryable, NOT cached.
  *                               🔴 Never "you are on Free": a backend blip must
  *                               not tell a paying customer they are unpaid, and
@@ -147,6 +155,10 @@ export function createProGate(
     } catch (error: unknown) {
       if (error instanceof Signal8ApiError && error.statusCode === 401) {
         return authRequiredDenial(brand);
+      }
+      if (error instanceof Signal8ApiError && error.statusCode === 403 && error.code === 'PRO_REQUIRED') {
+        remember(key, { proAccess: false, tier: 'free', expiresAt: now() + DENY_TTL_MS });
+        return proRequiredDenial(brand, 'free');
       }
       return unavailableDenial(brand);
     }

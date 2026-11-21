@@ -223,7 +223,7 @@ export function registerAllPrompts(server: McpServer, _client: Signal8ApiClient)
         'figure using the free Signal8 Academy guides and glossary, citing their URLs. Holds the ' +
         'rule that a missing or withheld figure is NOT MEASURED, never "no dilution".',
       argsSchema: {
-        ticker: z.string().describe('Stock ticker symbol to explain (e.g., MNTS, VNRX)'),
+        ticker: z.string().describe('Stock ticker symbol to explain (e.g., MNTS, GNS)'),
       },
     },
     ({ ticker }) => ({

@@ -25,9 +25,11 @@ describe('DilutionScan brand entitlement field', () => {
     expect(DILUTIONSCAN_BRAND.entitlementField).toBe('dilutionscanAccess');
     expect(SPLITSCANNER_BRAND.entitlementField).toBe('splitscannerAccess');
   });
-  it('the denial copy is unchanged and carries no em dash', () => {
+  it('the denial copy names the two real plans and carries no em dash', () => {
     const p = JSON.parse(proRequiredDenial(DILUTIONSCAN_BRAND, 'free').content[0]!.text);
-    expect(p.error).toContain('DilutionScan MCP is included with DilutionScan Pro.');
+    expect(p.error).toContain('DilutionScan MCP is included with the DilutionScan plan or Signal8 Pro.');
+    // There is no "DilutionScan Pro" plan.
+    expect(p.error).not.toContain('DilutionScan Pro');
     expect(/[—–]/.test(p.error)).toBe(false);
   });
 });

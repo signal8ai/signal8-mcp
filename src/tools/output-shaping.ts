@@ -66,7 +66,7 @@ function isoDate(d: Date): string {
 /**
  * Split the halt feed into current halts and long-running ones.
  *
- * The Nasdaq Trader feed keeps listing a halt until it is lifted, so a 2019
+ * The exchange halt feed keeps listing a halt until it is lifted, so a 2019
  * T12 halt (SVA) sits beside this morning's LUDP pause. Both are genuinely
  * "still halted", but presenting the old one as an active halt reads as news.
  * So: `halts` holds halts that began within LONG_RUNNING_HALT_DAYS (or whose

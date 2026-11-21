@@ -29,6 +29,7 @@
  */
 
 import { z } from 'zod/v3';
+import { companyIdSchema } from './company-identifier.js';
 import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Signal8ApiClient } from '../api-client.js';
 import { toolHandler } from './tool-handler.js';
@@ -89,11 +90,33 @@ const ADDON =
   'Included in Signal8 Pro: without it the call returns 403 FEATURE_NOT_AVAILABLE with ' +
   '`requiredTier: "pro"` (a tier upgrade; there is no add-on to buy).';
 
-/** Provenance and basis. */
+/**
+ * Provenance and basis.
+ *
+ * 2026-11-17: this said "Share counts are on one split basis", flat, while
+ * get_dilution_risk's own `osGrowthFacts` sentence (in the SAME description)
+ * says `basis: "as_filed"` counts are on different split bases, and
+ * get_dilution_history serves an as-filed series. What the code does
+ * (routes/api/v1/dilution-snapshot.ts `rebaseFamilyRows`, summary.ts): row and
+ * summary share counts and per-share prices are rebased onto today's basis; a
+ * row that cannot be rebased keeps its row with those figures nulled
+ * (`basis.withheld`) and the summary omits and counts it; ATM / equity-line
+ * share subfields are as reported; historical series are as filed.
+ */
 const AS_OF =
   'Figures are as of `meta.asOfDate`, from filings read through `meta.filingsThrough` ' +
-  '(a stale date predates anything filed since). Share counts are on one split basis; a ' +
-  'row that cannot be rebased is omitted and counted rather than published on a mixed basis.';
+  '(a stale date predates anything filed since). Instrument and summary share counts and ' +
+  'per-share prices are rebased onto the current split basis (each instrument row\'s `basis` ' +
+  'gives the factor applied, `presentedBasis` ("as_of_<asOf>"), `splitsApplied` [{effectiveDate, ' +
+  'ratio}] (the splits multiplied in) and `asFiled`, the as-filed value of every field that was ' +
+  'rebased, so a rebased figure can be audited against the filing). Rebased share counts are ' +
+  'rounded to whole shares in the output only; `asFiled` carries the unrounded filed figure. ' +
+  'A withheld row has `asFiled: {}` and `splitsApplied: null` (not measured). A row that cannot be rebased is still returned, with its share ' +
+  'and price figures null and `basis.withheld: true` plus a reason, and summary totals omit it ' +
+  'and count it rather than mix split bases. ATM and equity-line share figures (sold-to-date, ' +
+  'sales history) are as reported at the time of each sale, not rebased. Historical series ' +
+  '(get_dilution_history, and `osGrowthFacts` with `basis: "as_filed"`) are as filed, not ' +
+  'rebased.';
 
 /**
  * Register the dilution tools on the MCP server.
@@ -126,7 +149,7 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         ' ' +
         ADDON,
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "MNTS", "VNRX")'),
+        ticker: companyIdSchema,
       }),
       annotations: { readOnlyHint: true },
     },
@@ -173,7 +196,9 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         'counts, plus live ATM remaining (baby-shelf clamped) and equity-line remaining at the ' +
         'current price, plus live S-1 shares, plus `details.registeredResaleOverhangShares`. Low up ' +
         'to 20%, Medium 20-50%, High over 50%. `details.overheadSupplyBasis` itemises the components ' +
-        '(null = not measured) and `unquantified`; it is not the treasury-netted ' +
+        '(null = not measured) and `unquantified`; `atmCappedToZeroByBabyShelf: true` there means ' +
+        'the ATM is live with $0 sellable now under the baby-shelf cap, so it adds no shares to the ' +
+        'level today and a low `overheadSupply` can rise when the cap lifts. It is not the treasury-netted ' +
         '`inTheMoneySupplyPct` / `totalDilutiveShares`. When `details.osGrowthRate` is null, ' +
         '`details.osGrowthFacts` {fromShares, fromDate, toShares, toDate, splitsInWindow, basis} is a' +
         ' fact, not a rating; with `basis: "as_filed"` the two counts are on different split bases ' +
@@ -186,7 +211,7 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         ' ' +
         ADDON,
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "MNTS", "VNRX")'),
+        ticker: companyIdSchema,
       }),
       annotations: { readOnlyHint: true },
     },
@@ -210,7 +235,14 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         'months are currency-neutral. Float: a non-null `floatWithheldReason` means the tradeable ' +
         'float was not measured, and no float figure is stated. A declined float block (`available: ' +
         'false`) may carry `refusal.withheldReason`, the same value the standalone float data serves.' +
-        ' `tradeableFloatCeiling` is an upper bound, not a float: the float is at most that figure, ' +
+        ' `float.otherShareClasses[]` (present on both a published and a declined float block; null ' +
+        '= not measured, [] = none stated) lists each other class of common equity: `sharesAsStated` ' +
+        '(the filed count), `asOf`, `basis` ("as_stated" = no split since, "rebased" = ' +
+        '`sharesCurrent` is the count moved onto today\'s basis by `splitsApplied`, "pre_split_statement" ' +
+        '= a later split exists and the count was not moved, so `sharesCurrent` is null and the count is ' +
+        'only what the filing stated on `asOf`, "not_stated"), `splitsSinceAsOf` and `source` ' +
+        '{accession, formType, filingDate}. A pre_split_statement is not a current share count. ' +
+        '`tradeableFloatCeiling` is an upper bound, not a float: the float is at most that figure, ' +
         'and the ceiling is not an input to a market capitalisation, percent-of-float, short-interest' +
         ' ratio or comparison. Bounded totals: a null total (`potentialNewShares`, ' +
         '`totalWarrantShares`, `totalConvertibleShares`, `totalEquityPlanShares`, ' +
@@ -246,7 +278,7 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         ' ' +
         ADDON,
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "MNTS", "VNRX")'),
+        ticker: companyIdSchema,
       }),
       annotations: { readOnlyHint: true },
     },
@@ -290,6 +322,31 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         ' per right; `sharesUnderlying` is the share count (null = unsized, not 0), delivered on the ' +
         'initial business combination and lapsing if none closes. A snapshot stored before this ' +
         'family existed returns `examined: false` for rights, meaning not analysed, not "no rights". ' +
+        'Sources and dates: rows of recent_offerings, warrants, convertibles, preferred, atms, elocs, ' +
+        'shelfs and s1_offerings carry `primarySource` {accession, formType, filingDate, url, ' +
+        'sourceKind}, chosen from the row\'s own citations: offering prospectuses (424B4, 424B1, ' +
+        '424B5, 424B2, 424B7) first, then 8-K / 6-K, then other 424Bs, then registration statements, ' +
+        'then periodic reports, earliest filing within a rank (shelfs and s1_offerings rank the ' +
+        'registration statement first). `sourceKind: "later_report"` means only a 10-Q / 10-K / ' +
+        '20-F / 40-F cites the row, so its filingDate is when the row was reported, not when the deal ' +
+        'was announced. `citations` is unchanged and its first entry is not the primary source. ' +
+        'recent_offerings rows also carry `eventDate` (the closing date, else the pricing date, never ' +
+        'a filing date) and `eventDateKind` ("closing", "pricing", or null when neither is stated). ' +
+        'recent_offerings rows also carry `closingStatus` and `closingSource` {accession, formType, ' +
+        'filingDate, url}: `closingSource` is the earliest citation on the row whose quote states, in ' +
+        'the past tense, that the deal closed ("closed on", "completed", "consummated"); an "expected ' +
+        'to close" sentence never qualifies, so it is not the announcement in `primarySource`. ' +
+        '`closingStatus` is "confirmed" (a closingSource exists), "unconfirmed" (the row has a ' +
+        '`closingDate` but no citation states a completed closing: the date is the extraction\'s ' +
+        'reading, not corroborated by a cited sentence), "expected" (the only filing statement is ' +
+        'forward-looking, so any `closingDate` is an expected date, never a closing) or ' +
+        '"not_reported" (no `closingDate`). ' +
+        'ATMs: `terminationBasis` is `terminated` (ended on `terminationDate`), `scheduled_end` (the ' +
+        'agreement\'s own end date, `terminationDate`), `no_fixed_end` (runs until sold out or ' +
+        'terminated), `not_stated` (the filings read state no end date) or `not_recorded` (extracted ' +
+        'before this field existed, not "no end"); `terminationDate` is null unless a date was stated. ' +
+        'A salesHistory point with `cumulativeSharesSoldStatus: "not_stated"` carries ' +
+        '`cumulativeSharesSold: 0` as a placeholder, not a measured zero. ' +
         ALWAYS_200 +
         ' ' +
         NOT_MEASURED +
@@ -298,7 +355,7 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         ' ' +
         ADDON,
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "MNTS", "VNRX")'),
+        ticker: companyIdSchema,
         family: z.enum(DILUTION_INSTRUMENT_FAMILIES).describe(
           'Instrument family to return. One of: warrants, convertibles, preferred, shelfs, ' +
           'atms, elocs, s1_offerings, equity_plans, exchangeables, recent_offerings, rights.',
@@ -351,7 +408,7 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         ' ' +
         ADDON,
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "MNTS", "VNRX")'),
+        ticker: companyIdSchema,
       }),
       annotations: { readOnlyHint: true },
     },
@@ -380,7 +437,7 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         ' ' +
         ADDON,
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "MNTS", "VNRX")'),
+        ticker: companyIdSchema,
       }),
       annotations: { readOnlyHint: true },
     },
@@ -405,15 +462,39 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         '`degraded: true` means an SEC request failed and the series may be incomplete. ' +
         'Each `sharesOutstanding` point is the count as filed, on the split basis in force when it ' +
         'was reported and not rebased to today, so a reverse split shows as a step and a growth ' +
-        'rate measured across a split is not meaningful. `fullyDiluted` is on the current split ' +
-        'basis. A gap in the series means no filing covered that period, not that the count was ' +
-        'unchanged. Returns HTTP 200 when the snapshot is unavailable (read `coverage`); 404 only ' +
-        'when the ticker maps to no SEC filer. ' +
+        'rate measured across a split is not meaningful. Each point carries `asOf` (the date the ' +
+        'count is stated as of; `periodEnd` is a deprecated alias), `dateKind` ("cover": the cover-' +
+        'page date; "period_end": a balance-sheet date; "stated": a stored count, see below), ' +
+        '`filedAt`, `form` (an amendment keeps its "/A"), `accession` and `source`: "sec_xbrl" (the ' +
+        'class-less XBRL series), "xbrl_multiclass" (the filing\'s XBRL instance summed over its ' +
+        'common share classes, for issuers that report shares per class), or "stored_count" (the ' +
+        'newest count Signal8 holds that the issuer stated as of a date, appended only when newer ' +
+        'than every XBRL point and read from a filing not already in the series; it carries that ' +
+        'filing\'s `filedAt`, `form` and `accession`, and `storedSource` names its source). Each ' +
+        'filing contributes one point: its cover-page count, or its balance-sheet count when the ' +
+        'filing has no cover count. A count Signal8 only confirmed against a market-data figure has ' +
+        'no reported date and is not a point. A new 10-Q, 10-K, 20-F or 40-F appears on the next ' +
+        'request once SEC\'s data API lists it, usually within minutes of the filing. A count dated more ' +
+        'than about 400 days before its own filing is dropped as a stale recital. ' +
+        '`sharesOutstandingCoverage` explains the series: `xbrlReason` is non-null when there is no ' +
+        'XBRL point ("sec_unreachable", "no_share_facts_filed", "multiclass_periods_incomplete", ' +
+        '"all_facts_before_window" for anything older than `windowStart`, or "all_facts_stale"), and ' +
+        '`storedCount` says whether a stored count was appended and if not why. An empty series is ' +
+        'not a count of zero. `offerings[]` rows carry `eventDate` (an offering\'s closing date, else ' +
+        'its pricing date, never a filing date; `eventDateKind` says which) and `primarySource` ' +
+        '{accession, formType, filingDate, url, sourceKind}, the offering prospectus or current ' +
+        'report among the row\'s citations where one exists (`sourceKind: "later_report"` = only a ' +
+        'periodic report cites it). Their `accessionNumber`, `formType` and `filingDate` are ' +
+        'deprecated copies of `primarySource`. Offering share counts and prices are on the current ' +
+        'split basis; ATM sales and note conversions are as reported. `fullyDiluted` is on the ' +
+        'current split basis. A gap in the series means no filing covered that period, not that the ' +
+        'count was unchanged. Returns HTTP 200 when the snapshot is unavailable (read `coverage`); ' +
+        '404 only when the ticker maps to no SEC filer. ' +
         NOT_MEASURED +
         ' ' +
         ADDON,
       inputSchema: z.object({
-        ticker: z.string().describe('Stock ticker symbol (e.g., "MNTS", "VNRX")'),
+        ticker: companyIdSchema,
       }),
       annotations: { readOnlyHint: true },
     },

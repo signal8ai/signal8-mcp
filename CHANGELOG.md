@@ -7,6 +7,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-11-20
+
+### Added
+
+- **`get_float_history({ ticker, basis: "filings" })`**: a float history rebuilt from SEC
+  filings back to 2023, one point per filing date (`GET /companies/:ticker/float-history/filings`).
+  Shares outstanding minus affiliates: officers and directors, Schedule 13D holders, holders
+  tied to the board whatever schedule they file, and 10%+ holders with no passive 13G. Each point
+  carries `calc` (the subtraction line by line), `sources` (filings with verbatim quotes and
+  links) and `flags`; `source` is `ownership_table`, `snapshot` or `rolled`. A point with
+  `floatLow`/`floatHigh` and no `floatShares` is a range, never a midpoint. `basis: "daily"`
+  (the default) is unchanged. A date with no point was not measured.
+
+### Changed
+
+- **Tool results no longer carry data-vendor names** (2026-11-18). Every result passes
+  through `scrubProviderNames`: a `source`/`provider`/`vendor` field naming a third-party
+  data vendor is removed (as the hosted API already does), the same token under any other
+  key reads `vendor`, and a field holding a vendor API or CDN URL is removed. Tickers are
+  never touched. `get_trading_halts` no longer names a feed vendor in its description.
+
+### Added
+
+- **Rebasing disclosure, closing source, other share classes, renamed symbols** (2026-11-18,
+  a paying API customer's report; response fields only, no schema or prompt change):
+  - `get_dilution_instruments`: every row's `basis` now carries `asFiled` (the as-filed value of each
+    rebased field), `presentedBasis` (`as_of_<date>`) and `splitsApplied` [{effectiveDate, ratio}]
+    (the chain splits multiplied in; `null` on a withheld row, whose `asFiled` is empty). Rebased
+    share counts are rounded to whole shares in the output only (a count of 72,777.78 is served as
+    72,778; `asFiled` keeps the filed figure).
+  - `get_dilution_instruments` `recent_offerings` rows (and `offerings[]` in `get_dilution_history`)
+    carry `closingStatus` ("confirmed" | "unconfirmed" | "not_reported") and `closingSource`: the
+    earliest citation whose quote states a completed closing, never an "expected to close"
+    sentence. `primarySource` stays the announcement.
+  - `get_float` and `get_dilution_snapshot`: `float.otherShareClasses[]` (per class `sharesAsStated`,
+    `asOf`, `basis`, `sharesCurrent`, `rebased`, `splitsSinceAsOf`, `splitsApplied`, `source`).
+    Published even when the float is withheld; a class dated before a later split is a
+    `pre_split_statement` with `sharesCurrent: null`, never a current count. `null` = not
+    measured.
+  - Every `/dilution/{ticker}/*` tool resolves a symbol recorded as a same-CIK rename (GNTA to
+    SAEN) to its successor and returns `resolvedFrom` (`via: "rename"`), even while SEC's mapping
+    still lists the old symbol. A symbol held by a different company is not resolved.
+
+- **`get_dilution_instruments` ATM rows carry `terminationBasis` + `terminationDate`**
+  (2026-11-17, extraction PROMPT_VERSION 2670.0): whether the sales agreement was
+  terminated (and when), has a scheduled end date of its own, runs with no fixed end, or the
+  filings read state none. Rows extracted before 2670.0 read `not_recorded`, never "no end".
+  A salesHistory point's `cumulativeSharesSoldStatus: "not_stated"` marks a `0` share count
+  as a placeholder rather than a measured zero (absent on older snapshots).
+
+- **`get_recently_delisted({ days?, ticker?, q?, securityKind?, reason?, limit? })`** (2026-11-17):
+  securities removed or suspended from Nasdaq, NYSE or NYSE American in the last 30, 60 or
+  90 days, the signal8.ai/recently-delisted list (`GET /recently-delisted`, newly mounted on
+  the public API, no plan gate). The reason is the Rule 12d2-2 provision of the Form 25 or the
+  exchange's own words, never inferred from price; a null field means not measured. Filters
+  run server-side (`total` counts matches before `limit`, max 500); an unknown value is a 400.
+  Also on the DilutionScan MCP (`DILUTIONSCAN_TOOLS`, now 36 tools) and the SplitScanner MCP
+  (`SPLITSCANNER_TOOLS`, now 24 tools), with a workflow line in each brand's server instructions.
+
+- **`get_underwriter_stats({ firm?, includeDeals?, includePipeline?, limit? })`** (2026-11-17):
+  placement agents and underwriters of small-cap offerings, from the DilutionScan
+  underwriter statistics (`/dilution/underwriters`, now also mounted on the public API).
+  Without `firm`: firms by deal count with median Day 1 / Day 2 / Day 20 moves and the
+  below-offer share, each with `n`. With `firm` (free text such as "Maxim" or "HCW",
+  resolved by the backend `/dilution/underwriters/resolve`): the stat block, run-up and
+  news splits, the 3 newest deals and, on request, the full deal list and pipeline rows,
+  which the backend returns only to Signal8 Pro (`dealsLocked` / `locked` otherwise).
+  Also on the DilutionScan MCP (`DILUTIONSCAN_TOOLS`, now 35 tools), with a workflow line
+  in its server instructions.
+
+- **`get_live_rvol({ ticker })`** (2026-11-16): a ticker's relative volume right now, exactly
+  as the company page and Terminal show it (the same `/market/live` row and shared
+  resolver): `shown` (the one VOL + RVOL on screen), `premarket` (RVOL·TOD, RVOL·D and
+  both averages) and `day` (RVOL·D vs the 30-day average day). `get_rvol_history` covers
+  completed sessions only and its description now says so and points here.
+
+### Changed
+
+- README rewritten (2026-11-12): opens with what the server covers, states which tools
+  work without an API key (the three Academy tools) and what needs Signal8 Pro, adds
+  Claude Code and hosted Cursor configs, and replaces the stale tool lists (25 tools that
+  are no longer registered) with a table of all 113 registered tools. `package.json`
+  description and keywords updated to match. No code changes.
+
 ## [0.20.0] - 2026-11-09
 
 ### Changed

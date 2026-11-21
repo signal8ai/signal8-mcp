@@ -47,7 +47,7 @@
  * - Insider Positions: get_insider_positions, get_insider_positions_by_ticker
  * - Executive Trades: get_executive_trades (list + slug)
  * - Analyst: get_analyst_grades, get_price_target, get_analyst_coverage
- * - Compliance: get_compliance, get_deficiencies, get_compliance_alerts, get_listing_classification
+ * - Compliance: get_compliance, get_recently_delisted (get_deficiencies, get_compliance_alerts, get_listing_classification are block-commented)
  * - Screener: screen_companies, get_screener_fields, get_premarket_scan_history
  * - Events/ATM/Splits: get_events, get_atm_activity, get_split_history
  * - ETF: get_etf_bundle
@@ -64,13 +64,15 @@
  * - Dilution (Signal8 Pro tier): get_dilution_coverage, get_dilution_risk,
  *     get_dilution_snapshot, get_dilution_instruments, get_baby_shelf_capacity,
  *     get_dilution_performance, get_dilution_history
+ * - Underwriters (2026-11-17): get_underwriter_stats (firm stats for any key; the
+ *     deal list and pipeline rows Signal8 Pro, decided by the backend route)
  * - Intraday: get_intraday_bars, get_volume_profile, get_accumulation_snapshot
  * - Macro: get_eia_petroleum, get_commodity_alerts, get_macro_feed
  * - Donors (feature-199): get_politician_donors, get_politician_donor_summary,
  *     get_donor_aggregates, get_donor_trade_overlap
  * - Policy Events (feature-2175): get_policy_events, get_policy_trade_overlap,
  *     get_policy_trade_leaderboard
- * - Premarket/RVOL (feature-2300): get_rvol_history, get_premarket_scanner
+ * - Premarket/RVOL (feature-2300): get_rvol_history, get_live_rvol, get_premarket_scanner
  * - Social Calendar / reverse splits: get_upcoming_reverse_splits, get_recent_uplistings,
  *     get_reverse_split_lifecycle, get_reverse_splits_list, get_ended_reverse_splits,
  *     get_reverse_split_authority
@@ -83,6 +85,11 @@ import { type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type Signal8ApiClient } from '../api-client.js';
 import { SIGNAL8_BRAND, scrubUnexposedToolReferences, type McpBrand } from '../brand.js';
 import { createProGate } from '../pro-gate.js';
+import {
+  SIGNAL8_PRO_COVERAGE_TOOL,
+  signal8ProCoverage,
+  signal8ProCoverageDescription,
+} from './signal8-pro-catalog.js';
 import { registerCompanyTools } from './companies.js';
 import { registerCompanyDataTools } from './company-data.js';
 import { registerMarketTools } from './market.js';
@@ -97,6 +104,7 @@ import { registerEtfTools } from './etf.js';
 import { registerPoliticianTools } from './politicians.js';
 import { registerCashPositionTools } from './cash-position.js';
 import { registerDilutionTools } from './dilution.js';
+import { registerUnderwriterTools } from './underwriters.js';
 import { registerIntradayTools } from './intraday.js';
 // DISABLED: import { registerMacroTools } from './macro.js';
 import { registerInsiderPositionsTools } from './insider-positions.js';
@@ -108,6 +116,7 @@ import { registerFloorIntelligenceTools } from './floor-intelligence.js';
 import { registerPremarketTools } from './premarket.js';
 import { registerSocialCalendarTools } from './social-calendar.js';
 import { registerLearnTools } from './learn.js';
+import { withFreeTasterScope } from '../free-taster.js';
 
 /**
  * Register the live Signal8 MCP tools on the server (107 exposed at runtime:
@@ -249,24 +258,36 @@ export function registerAllTools(
         };
       }
     }
+    // Free taster (backend toggle `mcp_free_taster`): run every handler in a
+    // scope that collects the backend's free-calls headers and appends
+    // "Free Signal8 calls left today: N of 10" to a successful result. A Pro
+    // account's responses carry no header, so its results are unchanged.
+    {
+      const handler = others[others.length - 1];
+      if (typeof handler === 'function') {
+        others[others.length - 1] = (...args: unknown[]): Promise<unknown> =>
+          withFreeTasterScope(() => (handler as (...a: unknown[]) => unknown)(...args));
+      }
+    }
     return originalRegisterTool(name, config, ...others);
   };
 
   registerCompanyTools(server, client);       // search_companies, get_company_bundle, get_company_profile
-  registerCompanyDataTools(server, client);   // Phase 2: 13 company data tools
+  registerCompanyDataTools(server, client);   // Phase 2: 14 company data tools (incl. get_ipo_lockup)
   registerMarketTools(server, client);        // cross-ticker market tools: get_top_movers, get_market_breadth, get_trading_halts (batch/snapshot/top-performers block-commented behind rights review)
   registerCalendarTools(server, client);      // 5 calendar / material-filing tools
   // DISABLED: AI extractions feature deprecated — get_extractions, get_filing_extractions, get_extraction_dashboard, get_extraction_by_type
   // registerExtractionTools(server, client);
   registerEdgarTools(server, client);          // 10 EDGAR archive tools (screen, performance, search, documents, structured, document, exhibits, exhibit, text search, accession)
   registerIntelligenceTools(server, client);  // 15 intelligence tools (Phase 1 + 3 + 4 cross-company)
-  registerComplianceTools(server, client);    // get_compliance, get_deficiencies, get_compliance_alerts, get_listing_classification
+  registerComplianceTools(server, client);    // get_compliance, get_recently_delisted (get_deficiencies, get_compliance_alerts, get_listing_classification are block-commented)
   registerScreenerTools(server, client);      // screen_companies, get_premarket_scan_history (feature-2300)
   registerEventsAndAtmTools(server, client);  // get_events, get_atm_activity, get_split_history, get_split_performance
   registerEtfTools(server, client);           // get_etf_bundle
   registerPoliticianTools(server, client);   // 20 politician trading tools (STOCK Act + committees + bills + votes + P&L + discovery)
   registerCashPositionTools(server, client); // 6 cash position & runway tools
   registerDilutionTools(server, client);     // 7 dilution tools (Signal8 Pro tier): coverage, risk, snapshot, instruments, ib6, performance, history
+  registerUnderwriterTools(server, client);  // get_underwriter_stats (2026-11-17): firm stats free, deal list + pipeline rows Signal8 Pro (route-enforced)
   registerIntradayTools(server, client);    // 3 intraday analysis tools (bars, volume profile, accumulation)
   // DISABLED: macro feeds are dormant upstream (ai-api serves no eia-petroleum/commodity-price items) — get_eia_petroleum, get_commodity_alerts, get_macro_feed
   // registerMacroTools(server, client);
@@ -276,7 +297,35 @@ export function registerAllTools(
   registerDonorTools(server, client);            // 4 campaign-donor tools (feature-199): per-politician list + summary + market-wide aggregate + donor-trade overlap
   registerPolicyTools(server, client);           // 3 policy-event overlap tools (feature-2175): EO list + per-politician overlap + leaderboard
   registerFloorIntelligenceTools(server, client); // 3 floor-intelligence tools: legislative catalyst calendar + bill impact + per-politician upcoming bills
-  registerPremarketTools(server, client);        // 2 premarket/RVOL tools (feature-2300): get_rvol_history, get_premarket_scanner
+  registerPremarketTools(server, client);        // 3 premarket/RVOL tools (feature-2300): get_rvol_history, get_live_rvol, get_premarket_scanner
   registerSocialCalendarTools(server, client);   // 6 social-calendar / reverse-split tools: get_upcoming_reverse_splits, get_recent_uplistings, get_reverse_split_lifecycle, get_reverse_splits_list, get_ended_reverse_splits, get_reverse_split_authority
   registerLearnTools(server, client);            // 3 Academy tools (keyless): search_learn_guides, get_learn_guide, define_term
+
+  // Curated brands only: the Signal8 Pro cross-sell (signal8-pro-catalog.ts).
+  // Registered through the ORIGINAL registerTool on purpose: it is not a Signal8
+  // catalogue tool (so no brand allowlist entry) and it must NOT sit behind the
+  // brand's Pro gate, because it is the upgrade path a free account reads.
+  if (brand.toolAllowlist) {
+    const payload = signal8ProCoverage(brand);
+    originalRegisterTool(
+      SIGNAL8_PRO_COVERAGE_TOOL,
+      {
+        title: 'Signal8 Pro Coverage',
+        description: signal8ProCoverageDescription(brand),
+        inputSchema: z.object({}),
+        outputSchema: GENERIC_OUTPUT_SCHEMA,
+        annotations: {
+          title: 'Signal8 Pro Coverage',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      async () => ({
+        content: [{ type: 'text', text: JSON.stringify(payload) }],
+        structuredContent: { data: payload },
+      }),
+    );
+  }
 }
