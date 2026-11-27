@@ -61,7 +61,7 @@
  *     get_politician_disclosures
  * - Cash Position: get_cash_position, get_cash_history, screen_must_raise,
  *     get_burn_rate_comparison, get_offerings_since_anchor, get_cash_runway_calendar
- * - Dilution (Signal8 Pro tier): get_dilution_coverage, get_dilution_risk,
+ * - Dilution (Signal8 Pro tier): get_dilution_coverage, get_dilution_coverage_list, get_dilution_risk,
  *     get_dilution_snapshot, get_dilution_instruments, get_baby_shelf_capacity,
  *     get_dilution_performance, get_dilution_history
  * - Underwriters (2026-11-17): get_underwriter_stats (firm stats for any key; the
@@ -98,6 +98,7 @@ import { registerCalendarTools } from './calendar.js';
 import { registerEdgarTools } from './edgar.js';
 import { registerIntelligenceTools } from './intelligence.js';
 import { registerComplianceTools } from './compliance.js';
+import { registerSsrTools } from './ssr.js';
 import { registerScreenerTools } from './screener.js';
 import { registerEventsAndAtmTools } from './events-atm.js';
 import { registerEtfTools } from './etf.js';
@@ -280,6 +281,7 @@ export function registerAllTools(
   // registerExtractionTools(server, client);
   registerEdgarTools(server, client);          // 10 EDGAR archive tools (screen, performance, search, documents, structured, document, exhibits, exhibit, text search, accession)
   registerIntelligenceTools(server, client);  // 15 intelligence tools (Phase 1 + 3 + 4 cross-company)
+  registerSsrTools(server, client);           // get_ssr_list (SEC Rule 201 short sale restriction list, 2026-11-26)
   registerComplianceTools(server, client);    // get_compliance, get_recently_delisted (get_deficiencies, get_compliance_alerts, get_listing_classification are block-commented)
   registerScreenerTools(server, client);      // screen_companies, get_premarket_scan_history (feature-2300)
   registerEventsAndAtmTools(server, client);  // get_events, get_atm_activity, get_split_history, get_split_performance

@@ -34,6 +34,7 @@ function makeMockClient(): MockClient {
 const ALL_TOOLS = [
   'get_baby_shelf_capacity',
   'get_dilution_coverage',
+  'get_dilution_coverage_list',
   'get_dilution_history',
   'get_dilution_instruments',
   'get_dilution_performance',
@@ -56,7 +57,7 @@ describe('dilution tools', () => {
 
   /* ── registration shape ──────────────────────────────────── */
 
-  it('registers all 7 dilution tools', () => {
+  it('registers all 8 dilution tools', () => {
     expect(server.tools.map((t) => t.name).sort()).toEqual([...ALL_TOOLS].sort());
   });
 
@@ -120,7 +121,7 @@ describe('dilution tools', () => {
     expect(d).toContain('5xx');
   });
 
-  it.each(SHARED_CLAUSE_TOOLS.filter((n) => n !== 'get_dilution_coverage'))(
+  it.each(SHARED_CLAUSE_TOOLS.filter((n) => n !== 'get_dilution_coverage' && n !== 'get_dilution_coverage_list'))(
     '%s states the as-of/filings-through basis',
     (name) => {
       const d = toolMap.get(name)!.config.description!;
@@ -185,6 +186,18 @@ describe('dilution tools', () => {
     expect(d).toContain('float_unmeasured');
     expect(d).toContain('does not mean unlimited');
     expect(d).toContain('I.B.6');
+  });
+
+  it('get_baby_shelf_capacity describes the range fields and the I.B.1-excluded sales (2026-11-22)', () => {
+    const d = toolMap.get('get_baby_shelf_capacity')!.config.description!;
+    expect(d).toContain('`remainingCapacityBasis: "lower_bound"`');
+    expect(d).toContain('at most `capacityUpperBoundDollars`');
+    expect(d).toContain('`ib1ExcludedTakedowns`');
+    expect(d).toContain('`minFloatFloorDollars` (a floor on that float, not the float)');
+    expect(d).toContain('`accession`');
+    // Absence is not a finding that none qualified.
+    expect(d).toContain('never a statement that none qualified');
+    expect(d).not.toContain('—');
   });
 
   it('get_dilution_performance forbids a forecast framing', () => {
@@ -274,6 +287,33 @@ describe('dilution tools', () => {
   });
 
   /* ── request shape ───────────────────────────────────────── */
+
+  it('get_dilution_coverage_list GETs /dilution/coverage with its filters as query params', async () => {
+    await toolMap.get('get_dilution_coverage_list')!.handler({
+      builtSince: '2026-11-20',
+      tickers: 'MNTS,GCDT',
+      includeRetired: false,
+      sort: 'snapshotBuiltAt',
+      limit: 50,
+      cursor: 'abc',
+    });
+    expect(client.get).toHaveBeenCalledWith('/dilution/coverage', {
+      builtSince: '2026-11-20',
+      ticker: 'MNTS,GCDT',
+      includeRetired: 'false',
+      sort: 'snapshotBuiltAt',
+      limit: '50',
+      cursor: 'abc',
+    });
+  });
+
+  it('get_dilution_coverage_list states it carries no figures and lists withheld analyses', () => {
+    const d = toolMap.get('get_dilution_coverage_list')!.config.description!;
+    expect(d).toContain('snapshotBuiltAt');
+    expect(d).toContain('lastUpdatedAt');
+    expect(d).toContain('no instrument data or figures');
+    expect(d).toContain('`available: false`');
+  });
 
   it('get_dilution_coverage GETs /dilution/{ticker}/coverage', async () => {
     await toolMap.get('get_dilution_coverage')!.handler({ ticker: 'VNRX' });

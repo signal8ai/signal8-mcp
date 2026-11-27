@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-27
+
+### Added
+
+- **`get_distress_watch({ date? })`**: the daily distress report for one US trading day.
+  Upcoming trading suspensions, delisting determinations and panel actions, new listing
+  deficiencies, bankruptcy filings, compliance regained and securities recently removed, each
+  row tied to the filing or exchange notice it came from.
+- **`get_listing_notices`** (deficiency, delisting and hearing-deadline notices),
+  **`get_delisting_determinations`** (staff determinations and hearing deadlines, market-wide)
+  and **`get_pending_suspension_list`** (the Nasdaq pending suspension / delisting list).
+- **`get_ssr_list`**: stocks under the SEC Rule 201 short sale restriction today.
+- **`get_dilution_coverage_list`**: every ticker with a dilution analysis and when each was last rebuilt.
+
+### Changed
+
+- **`get_compliance`** now returns `exchangeActions` (hearing requested, staff determination,
+  panel exception or denial, suspension date) and `bidPriceCurePeriod`, which states when no
+  cure period applies because of a reverse split in the prior 12 months.
+- Dilution tools: Overhead Supply leaves a not-yet-effective or EDGAR-withdrawn S-1/F-1 out of
+  the level and shows it as the if-pending figure; ADS units and as-filed convertibles are
+  described.
+
 ## [0.21.0] - 2026-11-20
 
 ### Added

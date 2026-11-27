@@ -171,7 +171,9 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'predates a split the snapshot names, predates recorded issuances of 10% or more of it, or falls ' +
         'outside the snapshot\'s bounds is refused: "fallbackRefusal" {reason, refusedSource, detail}. ' +
         '"floatShares" null with "floatWithheldReason" set and no lower-tier figure means no source could ' +
-        'answer. A point (bound "point", or a "floatEstimate" with "statedAsOf" {asOf, source, events[]}) ' +
+        'answer. Split reasons: "split_unconfirmed" = the filings announce a split after the figures and ' +
+        'nothing yet confirms it took effect; "awaiting_post_split_count" = the reverse split is confirmed ' +
+        'and the post-split share count has not been read yet. Neither is restated across the split. A point (bound "point", or a "floatEstimate" with "statedAsOf" {asOf, source, events[]}) ' +
         'is a plain number as of asOf, with the unsized later issuances in "statedAsOf.events" as its ' +
         'caveat. A ceiling, floor or range is not a float figure: it means the filings put the float at ' +
         'most or at least N. Stand-ins on a withheld result are not floats and are not inputs to a market ' +
@@ -388,7 +390,19 @@ export function registerCompanyDataTools(server: McpServer, client: Signal8ApiCl
         'filer tags only a cost line without depreciation and amortization, so a margin from it is on that basis. ' +
         'grossProfit and grossMargin are null when not measured (no GrossProfit tag and no cost-of-revenue tag, as ' +
         'at banks and most REITs); a null margin is not a 100% margin. grossProfitSource is "reported" or ' +
-        '"revenue_minus_cost".',
+        '"revenue_minus_cost". Balance-sheet totalDebt = current + noncurrent borrowings + convertible notes + ' +
+        'finance leases from that balance sheet; operating lease liabilities are not included (they are ' +
+        'operatingLeaseLiability); for the newest balance sheets it is summed from the filing\'s own balance-sheet ' +
+        'lines. A balance sheet that was read, agrees with the tagged facts and lists no borrowings gives a measured ' +
+        'totalDebt of 0 (totalDebtBasis.method "balance_sheet_no_debt_lines"). Related-party loans the notes ' +
+        'describe as repayable and liabilities for sold future revenues or royalties count; related-party ' +
+        'balances the notes leave unexplained, expenses a related party paid for the company, share ' +
+        'subscription advances and card payables are excluded; when the note splits a related-party balance ' +
+        'into a loan and other amounts, only the loan part counts. ' +
+        'For lenders, nonrecourse ' +
+        'securitisation debt and deposits are excluded. totalDebtBasis gives what it ' +
+        'includes, the lines behind it (concept tag, bucket, value, caption) and data-quality flags; netDebt = ' +
+        'totalDebt - cash. A null totalDebt is not measured, not zero.',
       inputSchema: z.object({
         ticker: companyIdSchema,
         type: z.enum(['annual', 'quarter', 'ttm'])

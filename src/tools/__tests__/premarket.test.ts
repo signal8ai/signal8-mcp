@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { z } from 'zod/v4';
 import { registerPremarketTools } from '../premarket.js';
+import { SIGNAL8_BRAND } from '../../brand.js';
 import { CapturingServer, type CapturedTool } from '../../__tests__/helpers.js';
 import type { Signal8ApiClient } from '../../api-client.js';
 
@@ -43,11 +44,13 @@ describe('premarket tools', () => {
     expect(client.get).toHaveBeenCalledWith('/companies/onfo/rvol-live');
   });
 
-  it('get_rvol_history and get_live_rvol each point at the other for "today"', () => {
-    expect(toolMap.get('get_rvol_history')!.config.description).toContain('get_live_rvol');
+  // The tool descriptions may not name each other (directory policy,
+  // description-policy.test.ts); the pointer lives in the server instructions.
+  it('get_rvol_history and get_live_rvol are tied together for "today"', () => {
+    expect(SIGNAL8_BRAND.instructions).toMatch(/`get_live_rvol` is today's RVOL[^.]*`get_rvol_history` covers completed sessions only/);
     expect(toolMap.get('get_rvol_history')!.config.description).toMatch(/never has a point for today/);
     const live = toolMap.get('get_live_rvol')!.config.description as string;
-    for (const f of ['company page', 'shown', 'displayed', 'RVOL·TOD', 'RVOL·D', 'rvolTimeOfDay', 'rvolFullSession', 'avgVolumeByNow', 'avgFullSessionVolume', 'avgVolume30d', 'NOT MEASURED']) {
+    for (const f of ['company page', 'shown', 'displayed', 'RVOL·TOD', 'RVOL·D', 'rvolTimeOfDay', 'rvolFullSession', 'avgVolumeByNow', 'avgFullSessionVolume', 'avgVolume30d', 'not measured']) {
       expect(live).toContain(f);
     }
   });

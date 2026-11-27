@@ -18,6 +18,12 @@ function response(status: number, body: unknown, headers: Record<string, string>
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } });
 }
 
+const DILUTION_HEADERS = {
+  'X-Signal8-Free-Dilution-Remaining': '2',
+  'X-Signal8-Free-Dilution-Limit': '3',
+  'X-Signal8-Free-Dilution-Reset': '2026-11-23T05:00:00.000Z',
+};
+
 const TASTER_HEADERS = {
   'X-Signal8-Free-Calls-Remaining': '7',
   'X-Signal8-Free-Calls-Limit': '10',
@@ -51,6 +57,28 @@ describe('free taster headers', () => {
     expect(parseFreeTasterHeaders(new Headers({ ...TASTER_HEADERS, 'X-Signal8-Free-Calls-Upgrade-Url': 'javascript:alert(1)' }))?.upgradeUrl).toBeNull();
   });
 
+  it('parses the weekly dilution headers when present, and drops malformed ones', () => {
+    const h = { ...TASTER_HEADERS, ...DILUTION_HEADERS };
+    expect(parseFreeTasterHeaders(new Headers(h))?.dilution).toEqual({ remaining: 2, limit: 3, resetsAt: '2026-11-23T05:00:00.000Z' });
+    expect(parseFreeTasterHeaders(new Headers(TASTER_HEADERS))?.dilution).toBeUndefined();
+    expect(parseFreeTasterHeaders(new Headers({ ...h, 'X-Signal8-Free-Dilution-Remaining': '-1' }))?.dilution).toBeUndefined();
+  });
+
+  it('renders the weekly dilution line under the daily line', () => {
+    expect(
+      freeTasterNotice({
+        remaining: 7,
+        limit: 10,
+        resetsAt: null,
+        upgradeUrl: 'https://signal8.ai/pro',
+        dilution: { remaining: 2, limit: 3, resetsAt: null },
+      }),
+    ).toBe(
+      'Free Signal8 calls left today: 7 of 10 (resets at midnight ET). Signal8 Pro unlocks every tool with no daily cap: https://signal8.ai/pro\n' +
+        'Free dilution snapshots left this week: 2 of 3 (resets Monday at midnight ET; a ticker already read this week can be read again).',
+    );
+  });
+
   it('renders the exact user-facing line', () => {
     expect(freeTasterNotice({ remaining: 7, limit: 10, resetsAt: null, upgradeUrl: 'https://signal8.ai/pro' })).toBe(
       'Free Signal8 calls left today: 7 of 10 (resets at midnight ET). Signal8 Pro unlocks every tool with no daily cap: https://signal8.ai/pro',
@@ -73,6 +101,26 @@ describe('free taster end to end', () => {
     const t = texts(res);
     expect(JSON.parse(t[0]!)).toMatchObject({ success: true });
     expect(t[1]).toBe('Free Signal8 calls left today: 7 of 10 (resets at midnight ET). Signal8 Pro unlocks every tool with no daily cap: https://signal8.ai/pro');
+  });
+
+  it('get_dilution_snapshot appends both the daily and the weekly dilution line', async () => {
+    next = () => response(200, { data: { ticker: 'MULN', summary: {} } }, { ...TASTER_HEADERS, ...DILUTION_HEADERS });
+    const client = await connect();
+    const res = await client.callTool({ name: 'get_dilution_snapshot', arguments: { ticker: 'MULN' } });
+    expect(res.isError).toBeFalsy();
+    const t = texts(res);
+    expect(t).toHaveLength(2);
+    expect(t[1]).toContain('Free Signal8 calls left today: 7 of 10');
+    expect(t[1]).toContain('Free dilution snapshots left this week: 2 of 3');
+  });
+
+  it('forwards the weekly dilution refusal verbatim', async () => {
+    const message = "You have used this week's 3 free Signal8 dilution snapshots (AAPL, GME, MULN).";
+    next = () => response(403, { error: { code: 'PRO_REQUIRED', message, details: { reason: 'weekly_dilution' } } });
+    const client = await connect();
+    const res = await client.callTool({ name: 'get_dilution_snapshot', arguments: { ticker: 'TSLA' } });
+    expect(res.isError).toBe(true);
+    expect(JSON.parse(texts(res)[0]!)).toMatchObject({ code: 'PRO_REQUIRED', error: message });
   });
 
   it('leaves a Pro response (no header) byte-identical: one text item', async () => {

@@ -17,6 +17,22 @@ import { CapturingServer, createMockClient } from './helpers.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 describe('scrubProviderNames', () => {
+  // 2026-11-21 (LICN quote): a lower-case synthetic id with a numeric suffix is
+  // not the whole-token "rtpr" the provider list matches.
+  it('neutralises a press-release corpus id under ANY key', () => {
+    const out = scrubProviderNames({
+      sharesOutstandingAccession: 'rtpr-205110',
+      citations: [{ accession: 'RTPR-7', url: 'rtpr://7', quote: 'x' }],
+      basis: 'issuer filing rtpr-205110 (approximate)',
+      ticker: 'RTPR',
+    });
+    expect(out.sharesOutstandingAccession).toBe('press-release-205110');
+    expect(out.citations[0]).toEqual({ accession: 'press-release-7', url: null, quote: 'x' });
+    expect(out.basis).toBe('issuer filing press-release-205110 (approximate)');
+    expect(out.ticker).toBe('RTPR');
+    expect(JSON.stringify(out)).not.toMatch(/rtpr/);
+  });
+
   it('deletes a provider value under a source-like key and keeps neutral ones', () => {
     const out = scrubProviderNames({
       rows: [

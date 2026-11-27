@@ -2,8 +2,9 @@
  * Dilution MCP Tools
  *
  * Exposes the Signal8 dilution product — LLM-extracted, per-field-cited current-state
- * dilution data generated from SEC filing text — as seven read-only tools:
+ * dilution data generated from SEC filing text, as eight read-only tools:
  * - get_dilution_coverage:    cheap pre-check (is this ticker covered, how fresh, what tier)
+ * - get_dilution_coverage_list: every covered company and when each was rebuilt (2026-11-23)
  * - get_dilution_risk:        0-100 pressure score, 4 levels, 7-component breakdown
  * - get_dilution_snapshot:    summary totals, cash position, float, meta/provenance
  * - get_dilution_instruments: one instrument family's rows with per-field SEC citations
@@ -114,9 +115,8 @@ const AS_OF =
   'A withheld row has `asFiled: {}` and `splitsApplied: null` (not measured). A row that cannot be rebased is still returned, with its share ' +
   'and price figures null and `basis.withheld: true` plus a reason, and summary totals omit it ' +
   'and count it rather than mix split bases. ATM and equity-line share figures (sold-to-date, ' +
-  'sales history) are as reported at the time of each sale, not rebased. Historical series ' +
-  '(get_dilution_history, and `osGrowthFacts` with `basis: "as_filed"`) are as filed, not ' +
-  'rebased.';
+  'sales history) are as reported at the time of each sale, not rebased. Historical share-count ' +
+  'and cash series, and `osGrowthFacts` with `basis: "as_filed"`, are as filed, not rebased.';
 
 /**
  * Register the dilution tools on the MCP server.
@@ -157,6 +157,80 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
       toolHandler(() => client.get(`/dilution/${encodeURIComponent(ticker)}/coverage`)),
   );
 
+  /* ── get_dilution_coverage_list ──────────────────────────────────────────── */
+
+  // The rebuild LIST (2026-11-23): GET /dilution/coverage. One row per covered
+  // company with the same build provenance the per-company `meta` carries.
+  server.registerTool(
+    'get_dilution_coverage_list',
+    {
+      title: 'List Dilution Analyses and When Each Was Rebuilt',
+      description:
+        'Paginated list of every company Signal8 holds a dilution analysis for, with when each was last ' +
+        'rebuilt, so a re-pull can be timed without a per-company check. Each row: `ticker`, `cik`, ' +
+        '`companyName`, `snapshotBuiltAt` (every instrument family was last extracted from filings at or ' +
+        'after this instant), `snapshotBuiltPromptVersion` (under at least this extraction version), ' +
+        '`lastUpdatedAt` (when the served answer last changed for any reason, including partial updates ' +
+        'and float refreshes), `generatedAt` (the latest model pass of any kind, which a partial update ' +
+        'moves without a rebuild), `available`, `unavailableReason`, `publication` (published / ' +
+        'row_redacted / withheld) and `supersededBy` for a retired symbol. A null build time or version ' +
+        'means not known. Filters: `builtSince` and `updatedSince` (ISO date or date-time, inclusive), ' +
+        '`minPromptVersion` (numeric compare; rows with an unknown version are excluded), `tickers` ' +
+        '(comma-separated, up to 200) and `includeRetired`. Sorted newest first by `sort` (lastUpdatedAt ' +
+        'or snapshotBuiltAt), rows with no value last; `pagination.nextCursor` is the next page (null on ' +
+        'the last one) and is valid only with the same `sort`. Retired symbols (renamed under the same SEC ' +
+        'registrant) are left out unless `includeRetired` is true or the symbol is in `tickers`. A symbol in ' +
+        '`tickers` with no analysis of its own (a former symbol, e.g. MULN for BINI) resolves as the ' +
+        'per-company tools do: the current symbol\'s row is returned with `resolvedFrom` {symbol, cik, ' +
+        'currentSymbol, via}, also listed in `meta.resolved`. The list ' +
+        'carries no instrument data or figures, and is refreshed at most every 5 minutes ' +
+        '(`meta.listBuiltAt`); whether a newer filing has been read since a snapshot is only in the ' +
+        'per-company coverage check. Returns HTTP 200 for unavailable data: a withheld analysis is listed ' +
+        'with `available: false` and its `unavailableReason`, and a company absent from the list ' +
+        '(not_covered) has not been analysed yet, which is not the same as having no dilution; an outage ' +
+        'is a 5xx. ' +
+        NOT_MEASURED +
+        ' ' +
+        ADDON,
+      inputSchema: z.object({
+        builtSince: z
+          .string()
+          .optional()
+          .describe('Only analyses whose snapshotBuiltAt is at or after this ISO 8601 date or date-time.'),
+        updatedSince: z
+          .string()
+          .optional()
+          .describe('Only analyses whose lastUpdatedAt is at or after this ISO 8601 date or date-time.'),
+        minPromptVersion: z
+          .string()
+          .regex(/^\d+(?:\.\d+)*$/)
+          .optional()
+          .describe('Only analyses built under at least this extraction version, e.g. 2674.0.'),
+        tickers: z
+          .string()
+          .optional()
+          .describe('Comma-separated symbols, at most 200. A former symbol resolves to the current one (resolvedFrom).'),
+        includeRetired: z.boolean().optional().describe('List retired symbols too (withheld, with supersededBy).'),
+        sort: z.enum(['lastUpdatedAt', 'snapshotBuiltAt']).optional().describe('Sort key, newest first. Default lastUpdatedAt.'),
+        limit: z.number().int().min(1).max(500).optional().describe('Rows per page, 1 to 500. Default 100.'),
+        cursor: z.string().optional().describe('The previous page pagination.nextCursor.'),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ builtSince, updatedSince, minPromptVersion, tickers, includeRetired, sort, limit, cursor }) => {
+      const params: Record<string, string> = {};
+      if (builtSince) params.builtSince = builtSince;
+      if (updatedSince) params.updatedSince = updatedSince;
+      if (minPromptVersion) params.minPromptVersion = minPromptVersion;
+      if (tickers) params.ticker = tickers;
+      if (includeRetired !== undefined) params.includeRetired = String(includeRetired);
+      if (sort) params.sort = sort;
+      if (limit !== undefined) params.limit = String(limit);
+      if (cursor) params.cursor = cursor;
+      return toolHandler(() => client.get('/dilution/coverage', params));
+    },
+  );
+
   /* ── get_dilution_risk ───────────────────────────────────────────────────── */
 
   server.registerTool(
@@ -173,7 +247,8 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         'over a reduced denominator is not a low-risk reading. `scoreDenominatorThin: true` (under 70' +
         ' measured points) marks a partial reading (N of M measured). A non-null ' +
         '`scoreWithheldReason` (e.g. `no_dilution_snapshot`) means there is no score, not a score of ' +
-        'zero. With no filed share count, the share-count and market-cap components rest on ' +
+        'zero; `not_equity_security` means the listing is a note or other debt security, so no ' +
+        'dilution assessment applies and every figure is withheld (not a finding about the issuer). With no filed share count, the share-count and market-cap components rest on ' +
         '`details.sharesOutstandingEstimate` {shares, kind, asOf, source}, and ' +
         '`details.marketCapSource` is `"derived_price_x_estimated_os"`: those components rest on an ' +
         'estimate. Levels: when `levelsAreLowerBound` (always present) is true, the levels named in ' +
@@ -190,16 +265,32 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         '`levelsWithheldReason` is withheld, not low. `offeringAbility` is a capability profile, not ' +
         'pressure today: a live ATM or equity line with a measured $0 drawable (e.g. clamped by the ' +
         'I.B.6 cap) reads medium while the score prices the $0, and it does not mean the company ' +
-        'cannot raise. `atmRemainingBasis` / `elocRemainingBasis` values `total_minus_reported_sales`' +
+        'cannot raise. A primary S-1/F-1 filed but not yet effective per EDGAR counts in ' +
+        '`offeringAbility` and the score (a pending registration is a near-term offering; ' +
+        '`offeringAbilityBasis.registeredNotEffectiveRows`), unlike `overheadSupply`; a registration ' +
+        'EDGAR shows withdrawn counts nowhere (`offeringAbilityBasis.registeredWithdrawnExcluded`). ' +
+        '`atmRemainingBasis` / `elocRemainingBasis` values `total_minus_reported_sales`' +
         ' and `total_no_sales_reported` mark "up to" figures. `overheadSupply` is potential dilution ' +
         'excluding shelf as a % of shares outstanding: warrants, convertibles and preferred at gross ' +
         'counts, plus live ATM remaining (baby-shelf clamped) and equity-line remaining at the ' +
-        'current price, plus live S-1 shares, plus `details.registeredResaleOverhangShares`. Low up ' +
+        'current price, plus EFFECTIVE S-1/F-1 shares, plus `details.registeredResaleOverhangShares`. Low up ' +
         'to 20%, Medium 20-50%, High over 50%. `details.overheadSupplyBasis` itemises the components ' +
         '(null = not measured) and `unquantified`; `atmCappedToZeroByBabyShelf: true` there means ' +
         'the ATM is live with $0 sellable now under the baby-shelf cap, so it adds no shares to the ' +
         'level today and a low `overheadSupply` can rise when the cap lifts. It is not the treasury-netted ' +
-        '`inTheMoneySupplyPct` / `totalDilutiveShares`. When `details.osGrowthRate` is null, ' +
+        '`inTheMoneySupplyPct` / `totalDilutiveShares`. The level counts only instruments that can ' +
+        'become shares today; `details.overheadSupplyIfPending` (null = none pending) is a second ' +
+        'figure that adds instruments waiting on a stockholder vote or a milestone / date, and S-1/F-1 ' +
+        'registrations filed but not yet effective per EDGAR (condition "registration_not_effective", ' +
+        'sized at maximum dollars / today\'s price; a filed registration whose EDGAR state could not be ' +
+        'read stays in the level, `overheadSupplyBasis.registeredEffectivenessUnknownShares`), and notes ' +
+        'with no contractual conversion price or formula that are swapped for shares only at negotiated ' +
+        'prices (condition "negotiated_exchange", principal / today\'s price, `dollars` = principal; ' +
+        'counted in `overheadSupplyBasis.negotiatedExchangeNotesExcluded`, not in the level): `pctOfOs` ' +
+        'with `bound` "up_to" (every count stated), "about" (a registration or negotiated-swap note sized ' +
+        'at today\'s price, an estimate) or "at_least" (`boundReasons`), and `items[]` ' +
+        '{designation, condition, conditionDate, shares, sharesBasis, dollars?, offeringConditions?}; `shares` null is not measured, ' +
+        'never zero. It is a scenario, not the level. When `details.osGrowthRate` is null, ' +
         '`details.osGrowthFacts` {fromShares, fromDate, toShares, toDate, splitsInWindow, basis} is a' +
         ' fact, not a rating; with `basis: "as_filed"` the two counts are on different split bases ' +
         'and are not a growth comparison. ' +
@@ -229,7 +320,16 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         'Dilution snapshot header (the largest dilution payload): summary totals (potential new ' +
         'shares, their % of shares outstanding, per-family totals), the cash position (anchor cash, ' +
         'monthly burn, estimated current cash, runway months), the float block, and `meta` ' +
-        'provenance. Instrument rows are not included. Cash is in the filer\'s reporting currency: ' +
+        'provenance. Instrument rows are not included. ' +
+        '`summary.unrebasableAsFiled` (present only when a family total is null because some rows sit on a ' +
+        'split basis that could not be reconciled) gives, per family, `rebasedShares` (the part that WAS ' +
+        'moved onto today\'s basis) and `asFiled[]` groups {basisDate, shares, rows, variableRows}: each ' +
+        'group is the filed count on its own basis date, never on today\'s basis, and groups must not be ' +
+        'added to each other or to `rebasedShares`; `variableRows` > 0 (and `rebasedVariableRows` > 0) means ' +
+        'the count depends on a price (a stated floor or an assumed price), so it is a maximum or a model, ' +
+        'not a fixed count. For an issuer listed as ADSs, every share count is in ORDINARY shares, not ADSs: ' +
+        '`meta.depositaryRatioChanges` / `float.depositaryRatioStated` give the ordinary shares per ADS. ' +
+        'Cash is in the filer\'s reporting currency: ' +
         '`cashPosition.currency` is ISO 4217 (null = not determined), and ' +
         '`cashPosition.currencySource: "presumed_usd"` is a presumption, not a measurement. Runway ' +
         'months are currency-neutral. Float: a non-null `floatWithheldReason` means the tradeable ' +
@@ -317,7 +417,10 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         'is not in `potentialNewShares`. `warrantCount` counts warrants, not shares. Shelfs: ' +
         '`babyShelfCurrentCapacityDollars` is a stored, dated figure, not today\'s headroom: it is as ' +
         'of `babyShelfCapacityAsOf` (null = undated, not current), `babyShelfCapacityBasis` names its' +
-        ' float, and it is not the live raisable-now computation. Rights (SPAC unit rights): ' +
+        ' float, and it is not the live raisable-now computation. When `babyShelfCapacityRangeHighDollars`' +
+        ' is set the capacity is a RANGE: `babyShelfCurrentCapacityDollars` (the filings\' figure; null ' +
+        'means "up to") to `babyShelfCapacityRangeHighDollars` (Signal8\'s recompute); quote both ends. ' +
+        'Rights (SPAC unit rights): ' +
         '`rightsCount` counts rights, not shares; `sharesPerRight` is the printed fraction of a share' +
         ' per right; `sharesUnderlying` is the share count (null = unsized, not 0), delivered on the ' +
         'initial business combination and lapsing if none closes. A snapshot stored before this ' +
@@ -339,14 +442,35 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         '`closingStatus` is "confirmed" (a closingSource exists), "unconfirmed" (the row has a ' +
         '`closingDate` but no citation states a completed closing: the date is the extraction\'s ' +
         'reading, not corroborated by a cited sentence), "expected" (the only filing statement is ' +
-        'forward-looking, so any `closingDate` is an expected date, never a closing) or ' +
-        '"not_reported" (no `closingDate`). ' +
+        'forward-looking, so any `closingDate` is an expected date, even once it has passed; a filing ' +
+        'dated on or after it that states the closing on that date turns it "confirmed") or ' +
+        '"not_reported" (no `closingDate`). Since 2026-11-22 `closingSource` can also come from the ' +
+        'text of a filing we read (`evidence` "cited_document" or "filing_document", with the sentence ' +
+        'in `quote`; the sentence must give the row\'s own closing date), and a row with no ' +
+        '`closingDate` is "confirmed" with `basis` "share_issuance" when a cited quote or the text of a ' +
+        'filing we read says its exact share count was issued (the day is not stated). A sentence dating ' +
+        'the closing to another day or month never confirms. ' +
+        'recent_offerings rows also carry `heldBackClause`: "stated" (a filing states the delivered / ' +
+        'held-back split), "abeyance_clause_present" (no split is stated, but the deal\'s own documents ' +
+        'hold shares above a beneficial-ownership limitation in abeyance, so `sharesIssued` is the deal ' +
+        'total and may exceed what was delivered at closing) or null (neither found; this is not a finding ' +
+        'that no clause exists). Read the clause from `heldBackClauseEvidence` {evidence, quote, accession, ' +
+        'formType, filingDate, url}, set whenever `heldBackClause` is "abeyance_clause_present". ' +
+        '`abeyanceClauseCitation` is only the extraction\'s own citation list: it is filled when the ' +
+        'extraction cited the clause (`evidence` "extraction_citation") and stays [] when the clause was ' +
+        'read from the deal\'s own filings (`evidence` "cited_document" or "same_accession_document", e.g. ' +
+        'the inducement letter filed in the same accession). ' +
+        'Rebased share counts, including tranche `sharesIssued`, are whole numbers; `basis.asFiled` keeps the ' +
+        'as-filed figure. ' +
         'ATMs: `terminationBasis` is `terminated` (ended on `terminationDate`), `scheduled_end` (the ' +
         'agreement\'s own end date, `terminationDate`), `no_fixed_end` (runs until sold out or ' +
         'terminated), `not_stated` (the filings read state no end date) or `not_recorded` (extracted ' +
         'before this field existed, not "no end"); `terminationDate` is null unless a date was stated. ' +
         'A salesHistory point with `cumulativeSharesSoldStatus: "not_stated"` carries ' +
-        '`cumulativeSharesSold: 0` as a placeholder, not a measured zero. ' +
+        '`cumulativeSharesSold: 0` as a placeholder, not a measured zero. A 0 with no status (older ' +
+        'extractions) is also not a measured zero when the same point states dollars, an earlier point ' +
+        'states shares or dollars, or (for the latest figure) `remainingCapacityDollars` is below ' +
+        '`totalCapacityDollars`; the row\'s `soldToDateShares` 0 follows the same rule. ' +
         ALWAYS_200 +
         ' ' +
         NOT_MEASURED +
@@ -383,7 +507,10 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         'cap does not bind (float >= $75M, primary offerings unlimited under I.B.1); this is neither ' +
         '"no capacity" nor a favourable finding. `constraintApplies: null` with `suppressedReason: ' +
         '"float_unmeasured"`: the float value was not measured, so whether the cap binds is unknown; ' +
-        'it does not mean the cap does not bind and does not mean unlimited. A `suppressed` figure is' +
+        'it does not mean the cap does not bind and does not mean unlimited. When only an upper bound ' +
+        'on the non-affiliate float is known (`floatUpperBoundShares`) and it is worth under $75M, ' +
+        '`constraintApplies` is true and `capacityUpperBoundDollars` is the most the issuer may raise. ' +
+        'A `suppressed` figure is' +
         ' withheld (e.g. an issuer delisted to OTC cannot run an S-3 primary): the capacity is not ' +
         'stateable, which is not $0 raisable. `suppressedReason: "ib6_pool_unattributed"`: the cap ' +
         'applies but trailing sales could not all be attributed, so $0 is a lower bound; ' +
@@ -399,7 +526,13 @@ export function registerDilutionTools(server: McpServer, client: Signal8ApiClien
         '(`issuerUnlimitedOffer`); whether the cap applies is not measured, and is neither $0, ' +
         'constrained nor unlimited. `floatValueBasis: "issuer_stated"`: the issuer\'s own printed ' +
         'I.B.6 float (`issuerStatedFloat`, prospectus <= 60 days old) was lower than the live ' +
-        'valuation and was used. A null remaining capacity is not measured, not zero. ' +
+        'valuation and was used. `ib1ExcludedTakedowns`: trailing sales LEFT OUT of the pool because ' +
+        'they were sold under I.B.1 (on every sale day the float reached $75M plus a margin within ' +
+        'the prior 60 days); each gives `date`, `grossDollars`, the sale span `spanStart`..`spanEnd`, ' +
+        '`minFloatFloorDollars` (a floor on that float, not the float) and, when cited, the ' +
+        '`accession` and `formType` of the filing that stated the sale. Absent means no sale was ' +
+        'excluded or the test did not run; it is never a statement that none qualified. ' +
+        'A null remaining capacity is not measured, not zero. ' +
         ALWAYS_200 +
         ' ' +
         NOT_MEASURED +

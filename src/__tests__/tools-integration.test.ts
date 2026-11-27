@@ -37,8 +37,11 @@ const EXPECTED_TOOLS = [
   'get_clinical_trials',
   'get_company_profile',
   'get_compliance',
-  'get_recently_delisted',
+  'get_delisting_determinations',
+  'get_distress_watch',
+  'get_ssr_list',
   'get_dilution_coverage',
+  'get_dilution_coverage_list',
   'get_dilution_history',
   'get_dilution_instruments',
   'get_dilution_performance',
@@ -48,6 +51,7 @@ const EXPECTED_TOOLS = [
   'get_earnings',
   'get_earnings_calendar',
   'get_economic_calendar',
+  'get_ended_reverse_splits',
   'get_etf_bundle',
   'get_executives',
   'get_exhibit_content',
@@ -80,11 +84,14 @@ const EXPECTED_TOOLS = [
   'get_ipo_lockup',
   'get_learn_guide',
   'get_legislative_calendar',
+  'get_listing_notices',
+  'get_live_rvol',
   'get_market_breadth',
   'get_market_metrics',
   'get_market_news',
   'get_news',
   'get_ownership',
+  'get_pending_suspension_list',
   'get_policy_events',
   'get_policy_trade_leaderboard',
   'get_policy_trade_overlap',
@@ -113,13 +120,12 @@ const EXPECTED_TOOLS = [
   'get_recent_congressional_votes',
   'get_recent_material_filings',
   'get_recent_uplistings',
+  'get_recently_delisted',
+  'get_recently_sponsored_bills',
+  'get_reverse_split_authority',
   'get_reverse_split_lifecycle',
   'get_reverse_splits_list',
-  'get_ended_reverse_splits',
-  'get_reverse_split_authority',
-  'get_recently_sponsored_bills',
   'get_rvol_history',
-  'get_live_rvol',
   'get_senate_trades_by_ticker',
   'get_short_interest',
   'get_split_history',
@@ -182,7 +188,7 @@ beforeAll(() => {
 
 describe('tool registration', () => {
   it('registers exactly 113 tools', () => {
-    expect(server.tools).toHaveLength(117);
+    expect(server.tools).toHaveLength(123);
   });
 
   it.each(EXPECTED_TOOLS)('registers tool: %s', (name) => {

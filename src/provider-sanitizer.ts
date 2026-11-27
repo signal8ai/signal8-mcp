@@ -67,11 +67,38 @@ const TICKER_KEY_RE = /ticker|symbol/i;
 export const PROVIDER_DOMAIN_RE =
   /(?:^|[/.@])(?:financialmodelingprep\.com|polygon\.io|massive\.com|sec-api\.io|databento\.com|coingecko\.com|newsquawk\.com|nasdaqtrader\.com)\b/i;
 
+/**
+ * A press release's synthetic corpus id names the release vendor (2026-11-21:
+ * a quote carried `sharesOutstandingAccession: "rtpr-205110"`, lower-case with
+ * a numeric suffix, which the whole-token match below never sees). Mirrors the
+ * backend `neutralPressReleaseIds`: a whole `rtpr://<id>` url becomes null,
+ * any `rtpr-<id>` / `rtpr:<id>` / `rtpr://<id>` becomes `press-release-<id>`.
+ */
+const PRESS_RELEASE_URL_VALUE_RE = /^rtpr:\/\/\d+\/?$/i;
+// `rtpr:<id>` (single colon) is the reverse-split tracker's stored document form (2026-11-21).
+const PRESS_RELEASE_ID_IN_TEXT_RE = /\brtpr(?:-|:(?:\/\/)?)(\d+)\b/gi;
+
+export function neutralPressReleaseIds(value: string): string | null {
+  if (PRESS_RELEASE_URL_VALUE_RE.test(value.trim())) return null;
+  return value.replace(PRESS_RELEASE_ID_IN_TEXT_RE, 'press-release-$1');
+}
+
 function scrub(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(scrub);
   if (node === null || typeof node !== 'object') return node;
   const out: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(node as Record<string, unknown>)) {
+    if (typeof val === 'string' && /rtpr/i.test(val)) {
+      const neutral = neutralPressReleaseIds(val);
+      if (neutral === null) {
+        out[key] = null;
+        continue;
+      }
+      if (neutral !== val) {
+        out[key] = neutral;
+        continue;
+      }
+    }
     if (typeof val === 'string') {
       const norm = val.trim().toLowerCase();
       if (PROVIDER_KEYS.has(key) && PROVIDER_VALUES.has(norm)) continue;

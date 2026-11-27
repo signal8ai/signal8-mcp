@@ -90,8 +90,8 @@ export function registerEventsAndAtmTools(server: McpServer, client: Signal8ApiC
         'and the cumulative. They are not splits. ' +
         'Scope: dated splits only, i.e. splits that executed plus calendar announcements that carry a date. ' +
         'A reverse split that was proposed, is waiting on a shareholder vote, or was approved with no ' +
-        'effective date set is NOT listed here; for those use get_reverse_split_lifecycle (one ticker) or ' +
-        'get_reverse_splits_list (across tickers).',
+        'effective date set is not listed here; those stages are in the reverse-split lifecycle data ' +
+        '(per ticker and across tickers).',
       inputSchema: z.object({
         ticker: z.string().describe('Stock ticker symbol (e.g., AAPL, TSLA)'),
       }),

@@ -45,9 +45,9 @@ export function registerPremarketTools(server: McpServer, client: Signal8ApiClie
         '30-session average full-day volume, null when no full-day denominator exists) and ' +
         '"advDays" (its sample size), which give a magnitude to points RVOL cannot rate. ' +
         'advRatio is not an RVOL: it compares a partial session to a whole day, so it is ' +
-        'typically well under 1 and is not comparable to rvol. COMPLETED SESSIONS ONLY: the ' +
+        'typically well under 1 and is not comparable to rvol. Completed sessions only: the ' +
         'newest point is the previous trading day (the rollups land ~12:10 ET the next day), ' +
-        'so this tool never has a point for today. For the RVOL right now, use get_live_rvol.',
+        'so this series never has a point for today; the live RVOL is a separate figure.',
       inputSchema: z.object({
         ticker: companyIdSchema,
         session: z
@@ -115,9 +115,9 @@ export function registerPremarketTools(server: McpServer, client: Signal8ApiClie
     {
       title: 'Get Live RVOL',
       description:
-        "Get a ticker's relative volume (RVOL) right now, EXACTLY as the Signal8 company page " +
-        'and Terminal show it (same data, same rule). Use this for "what is $X\'s RVOL today / ' +
-        'right now"; get_rvol_history only covers completed sessions and never has today. ' +
+        "Get a ticker's relative volume (RVOL) right now, exactly as the Signal8 company page " +
+        'and Terminal show it (same data, same rule): the answer to "what is $X\'s RVOL today / ' +
+        'right now". The daily RVOL history covers completed sessions only and never has today. ' +
         '"session" is pre-market, open, after-hours or closed. "shown" is the one VOL + RVOL ' +
         'on screen now: in pre-market the time-of-day RVOL ("RVOL·TOD") when measured, else ' +
         'the full-session one; from the open, today\'s volume / the 30-day average daily ' +
@@ -130,7 +130,7 @@ export function registerPremarketTools(server: McpServer, client: Signal8ApiClie
         'and "avgVolume30d". Every RVOL carries its "label" and a "note" naming its ' +
         'denominator; RVOL·TOD and RVOL·D differ by orders of magnitude early in the morning ' +
         'and are not interchangeable. "found": false means no live row for the ticker. Null ' +
-        'means NOT MEASURED, never zero volume.',
+        'means not measured, never zero volume.',
       inputSchema: z.object({
         ticker: companyIdSchema,
       }).shape,
