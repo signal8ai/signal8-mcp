@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-28
+
+### Added
+
+- **`get_stream_events({ channels?, since?, limit?, ...filters })`**: reads Signal8's real-time
+  stream of SEC filings and press releases (raw and with Signal8's AI read) from the last 24 hours,
+  without holding a WebSocket. Returns a cursor so an agent can poll for what arrived since its last
+  call. Signal8 Pro: live, every filter (tickers, forms, 8-K items, event types, significance, market
+  cap, exchange, security type), up to 200 events per call. Free accounts: the 5 most recent events,
+  at least 15 minutes old, filtered by channel and ticker, no cursor.
+- **`get_catalyst_calendar`**: dated catalysts across US-listed companies (listing-compliance
+  deadlines and hearings, reverse split dates and meetings, warrant expiries, convertible maturities,
+  shelf expiries, lock-up expiries), each with a date basis (stated, computed or estimate) and a source link.
+- **`get_listing_events`**: the history of exchange listing events for one company or market-wide
+  (deficiency notices, compliance regained, determinations, suspensions, removals), read from SEC filings,
+  company press releases and exchange records.
+- **`screen_listing_risk`**: screen US-listed stocks by listing risk (open deficiency types, days to
+  deadline and more).
+
 ## [0.22.0] - 2026-11-27
 
 ### Added

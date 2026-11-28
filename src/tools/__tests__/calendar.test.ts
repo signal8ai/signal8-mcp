@@ -41,9 +41,10 @@ describe('calendar tools', () => {
 
   // get_lockup_expirations is DISABLED in calendar.ts (derived from the
   // deprecated underwriting-terms data), so only these five register.
-  it('registers the 5 active calendar tools', () => {
+  it('registers the 6 active calendar tools', () => {
     expect(server.tools.map((t) => t.name).sort()).toEqual(
       [
+        'get_catalyst_calendar',
         'get_earnings_calendar',
         'get_economic_calendar',
         'get_filing_calendar',

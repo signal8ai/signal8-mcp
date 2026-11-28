@@ -18,6 +18,10 @@
  * - get_distress_watch: the daily distress report (scheduled suspensions,
  *   determinations / hearings / Panel events, new deficiencies, bankruptcies,
  *   regained compliance, 12d2-2(b) removals; GET /distress-watch, 2026-11-26)
+ * - get_listing_events: listing-compliance event history, per company or
+ *   market-wide (GET /compliance/listing-events, 2026-11-27)
+ * - screen_listing_risk: screen by listing risk (GET
+ *   /compliance/listing-risk-screen, 2026-11-27)
  */
 
 import { z } from 'zod/v3';
@@ -265,6 +269,98 @@ export function registerComplianceTools(server: McpServer, client: Signal8ApiCli
       if (ticker !== undefined) params.ticker = ticker.replace(/^\$/, '').toUpperCase();
       if (changesDays !== undefined) params.changesDays = String(changesDays);
       return toolHandler(() => client.get('/compliance/pending-suspension-list', params));
+    },
+  );
+
+  // get_listing_events (2026-11-27): GET /compliance/listing-events. Dark until
+  // the backend toggle `api_listing_events` is ON (the route answers 503).
+  server.registerTool(
+    'get_listing_events',
+    {
+      title: 'Get Listing Compliance Event History (Deficiency, Hearing, Panel, Suspension)',
+      description:
+        'History of exchange listing events for one company, or market-wide, on Nasdaq, NYSE and NYSE American, read ' +
+        'from SEC filings (8-K, 6-K, Form 25), company press releases and exchange records: deficiency notices, ' +
+        'Staff Delisting Determinations, hearing requests and stated intents, stays, Hearings Panel exceptions, ' +
+        'grants and denials, second compliance periods, trading suspensions, regained compliance and Form 25 ' +
+        'removals under Exchange Act Rule 12d2-2(b). Each event has eventType, eventDate, standards, the rule ' +
+        'cited, a deadline only when the exchange or an accepted plan states it (deadline.basis), on a Staff ' +
+        'Delisting Determination a hearingRequestDeadline computed by Signal8 as the letter date plus 7 calendar ' +
+        'days (Nasdaq Listing Rule 5815(a)(1), with its basis), hearing and suspension dates, and the source filing ' +
+        'link (source.url, source.edgarUrl). It answers questions such as when a company got its delisting ' +
+        'determination and what happened after. A null field means not measured. An empty list means nothing on ' +
+        'record in the window, never that the company is in compliance.',
+      inputSchema: z.object({
+        ticker: z.string().regex(/^\$?[A-Za-z]{1,5}([.-][A-Za-z0-9]{1,4})?$/).optional()
+          .describe('Only this company (matched by ticker or CIK). Omit for market-wide.'),
+        since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+          .describe('YYYY-MM-DD, inclusive (default 30 days ago; at most 730 days back with a ticker, 90 without).'),
+        types: z.array(z.enum([
+          'deficiency_notice', 'exchange_list_deficiency', 'staff_delist_determination', 'hearing_intended',
+          'hearing_requested', 'delisting_stayed', 'panel_exception', 'continued_listing_granted',
+          'second_period_granted', 'second_period_denied', 'panel_denial', 'trading_suspension',
+          'exchange_delisting_notice', 'compliance_regained', 'exchange_removal',
+        ])).min(1).optional().describe('Only these event types.'),
+        limit: z.number().int().min(1).max(500).default(100).optional().describe('Maximum rows (default 100), newest first.'),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ ticker, since, types, limit }) => {
+      const params: Record<string, string> = {};
+      if (ticker !== undefined) params.ticker = ticker.replace(/^\$/, '').toUpperCase();
+      if (since !== undefined) params.since = since;
+      if (types !== undefined) params.types = types.join(',');
+      if (limit !== undefined) params.limit = String(limit);
+      return toolHandler(() => client.get('/compliance/listing-events', params));
+    },
+  );
+
+  // screen_listing_risk (2026-11-27): GET /compliance/listing-risk-screen. Dark
+  // until the backend toggle `api_listing_risk_screen` is ON.
+  server.registerTool(
+    'screen_listing_risk',
+    {
+      title: 'Screen Stocks by Listing Risk (Deficiency, Deadline, Hearing, Reverse Split, Pending Suspension)',
+      description:
+        'Screen US-listed stocks by exchange listing risk. Filters (all must match): deficiencyTypes (open notices), ' +
+        'maxDaysToDeadline (open notice whose deadline is 0..N days away; deadlineBasis on each row says whether ' +
+        'the exchange or an accepted plan stated it or it is a Signal8 estimate), hearingDeadlineWithinDays ' +
+        '(computed hearing request deadline of an open Staff Delisting Determination), panelExceptionEndsWithinDays ' +
+        '(a Hearings Panel exception deadline), reverseSplitNeeded (an open bid-price notice and a last price below ' +
+        '$1.00; not a statement that the company will split), reverseSplitNearCap (cumulative reverse splits over ' +
+        'two years within 20x of the 1-for-250 cap), pendingSuspension (on the exchange pending suspension list as ' +
+        'last read), and price, market cap and float bounds. At least one listing-risk filter is required. Rows ' +
+        'carry the open notices, deadlines with their basis, hearing deadline, reverse-split headroom and the ' +
+        'pending list entry. Tickers a filter could not judge are excluded and counted in excludedNotMeasured, so ' +
+        'an empty result is not evidence of compliance.',
+      inputSchema: z.object({
+        deficiencyTypes: z.array(z.enum([
+          'bid_price_deficiency', 'equity_deficiency', 'listing_rule_deficiency', 'delisting_notice',
+          'panel_hearing', 'general_deficiency',
+        ])).min(1).optional().describe('Open deficiency notice of one of these types.'),
+        maxDaysToDeadline: z.number().int().min(0).max(90).optional().describe('Open notice deadline within N days (0-90).'),
+        hearingDeadlineWithinDays: z.number().int().min(0).max(60).optional().describe('Hearing request deadline within N days (0-60).'),
+        panelExceptionEndsWithinDays: z.number().int().min(0).max(365).optional().describe('Panel exception deadline within N days (0-365).'),
+        reverseSplitNeeded: z.boolean().optional().describe('true: open bid-price notice and last price below $1.00.'),
+        reverseSplitNearCap: z.boolean().optional().describe('true: cumulative 2-year reverse splits near the 1-for-250 cap.'),
+        pendingSuspension: z.boolean().optional().describe('true: on the exchange pending suspension / delisting list.'),
+        minPrice: z.number().min(0).optional(),
+        maxPrice: z.number().min(0).optional(),
+        minMarketCap: z.number().min(0).optional().describe('USD.'),
+        maxMarketCap: z.number().min(0).optional().describe('USD.'),
+        minFloat: z.number().min(0).optional().describe('Shares.'),
+        maxFloat: z.number().min(0).optional().describe('Shares.'),
+        limit: z.number().int().min(1).max(500).default(100).optional().describe('Maximum rows (default 100), soonest deadline first.'),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async (args) => {
+      const params: Record<string, string> = {};
+      for (const [k, v] of Object.entries(args)) {
+        if (v === undefined || v === false) continue;
+        params[k] = Array.isArray(v) ? v.join(',') : String(v);
+      }
+      return toolHandler(() => client.get('/compliance/listing-risk-screen', params));
     },
   );
 

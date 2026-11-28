@@ -32,7 +32,8 @@
  *     get_sector_etf_snapshot, get_top_movers, get_top_performers, get_trading_halts
  * - Trading Halts (feature-2260): get_trading_halts (active NASDAQ/NYSE/AMEX halts)
  * - Calendar: get_earnings_calendar, get_economic_calendar, get_filing_calendar,
- *     get_lockup_expirations, get_post_earnings_movers, get_recent_material_filings
+ *     get_lockup_expirations, get_post_earnings_movers, get_recent_material_filings,
+ *     get_catalyst_calendar
  * - EDGAR Content (Signal8's SEC archive, `archiveFrom` → today): screen_sec_filings,
  *     screen_sec_filings_performance, search_sec_filings (incl. company filters),
  *     get_filing_documents, get_filing_structured, get_filing_document, get_filing_exhibits,
@@ -76,6 +77,7 @@
  * - Social Calendar / reverse splits: get_upcoming_reverse_splits, get_recent_uplistings,
  *     get_reverse_split_lifecycle, get_reverse_splits_list, get_ended_reverse_splits,
  *     get_reverse_split_authority
+ * - Streams (2026-11-28): get_stream_events (the real-time WebSocket's 24 h log, polled)
  * - Academy (signal8.ai/learn, KEYLESS — the only tools that work without an API
  *     key): search_learn_guides, get_learn_guide, define_term
  */
@@ -117,6 +119,7 @@ import { registerFloorIntelligenceTools } from './floor-intelligence.js';
 import { registerPremarketTools } from './premarket.js';
 import { registerSocialCalendarTools } from './social-calendar.js';
 import { registerLearnTools } from './learn.js';
+import { registerStreamTools } from './streams.js';
 import { withFreeTasterScope } from '../free-taster.js';
 
 /**
@@ -276,7 +279,7 @@ export function registerAllTools(
   registerCompanyTools(server, client);       // search_companies, get_company_bundle, get_company_profile
   registerCompanyDataTools(server, client);   // Phase 2: 14 company data tools (incl. get_ipo_lockup)
   registerMarketTools(server, client);        // cross-ticker market tools: get_top_movers, get_market_breadth, get_trading_halts (batch/snapshot/top-performers block-commented behind rights review)
-  registerCalendarTools(server, client);      // 5 calendar / material-filing tools
+  registerCalendarTools(server, client);      // 6 calendar / material-filing tools (incl. get_catalyst_calendar)
   // DISABLED: AI extractions feature deprecated — get_extractions, get_filing_extractions, get_extraction_dashboard, get_extraction_by_type
   // registerExtractionTools(server, client);
   registerEdgarTools(server, client);          // 10 EDGAR archive tools (screen, performance, search, documents, structured, document, exhibits, exhibit, text search, accession)
@@ -302,6 +305,7 @@ export function registerAllTools(
   registerPremarketTools(server, client);        // 3 premarket/RVOL tools (feature-2300): get_rvol_history, get_live_rvol, get_premarket_scanner
   registerSocialCalendarTools(server, client);   // 6 social-calendar / reverse-split tools: get_upcoming_reverse_splits, get_recent_uplistings, get_reverse_split_lifecycle, get_reverse_splits_list, get_ended_reverse_splits, get_reverse_split_authority
   registerLearnTools(server, client);            // 3 Academy tools (keyless): search_learn_guides, get_learn_guide, define_term
+  registerStreamTools(server, client);           // get_stream_events (2026-11-28): poll the real-time WebSocket's 24 h log (filings, press releases, analyses)
 
   // Curated brands only: the Signal8 Pro cross-sell (signal8-pro-catalog.ts).
   // Registered through the ORIGINAL registerTool on purpose: it is not a Signal8

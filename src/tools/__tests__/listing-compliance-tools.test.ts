@@ -50,3 +50,37 @@ describe('listing compliance MCP tools', () => {
     }
   });
 });
+
+describe('get_listing_events / screen_listing_risk (2026-11-27)', () => {
+  it('get_listing_events sends ticker, since, types and limit as strings', async () => {
+    await tool('get_listing_events').handler({ ticker: '$onfo', since: '2026-10-01', types: ['panel_exception', 'hearing_requested'], limit: 5 });
+    expect(get).toHaveBeenCalledWith('/compliance/listing-events', {
+      ticker: 'ONFO', since: '2026-10-01', types: 'panel_exception,hearing_requested', limit: '5',
+    });
+    await tool('get_listing_events').handler({});
+    expect(get).toHaveBeenLastCalledWith('/compliance/listing-events', {});
+    const d = tool('get_listing_events').config.description as string;
+    expect(d).toMatch(/null field means not measured/);
+    expect(d).toMatch(/computed by Signal8/);
+    expect(d).toMatch(/never that the company is in compliance/);
+  });
+
+  it('screen_listing_risk joins lists, drops false booleans', async () => {
+    await tool('screen_listing_risk').handler({
+      deficiencyTypes: ['bid_price_deficiency', 'equity_deficiency'], maxDaysToDeadline: 30, reverseSplitNeeded: true,
+      pendingSuspension: false, maxMarketCap: 50_000_000,
+    });
+    expect(get).toHaveBeenCalledWith('/compliance/listing-risk-screen', {
+      deficiencyTypes: 'bid_price_deficiency,equity_deficiency', maxDaysToDeadline: '30', reverseSplitNeeded: 'true', maxMarketCap: '50000000',
+    });
+    expect(tool('screen_listing_risk').config.description).toMatch(/excludedNotMeasured/);
+  });
+
+  it('both are read-only, name no data provider and use no em dash', () => {
+    for (const n of ['get_listing_events', 'screen_listing_risk']) {
+      expect(tool(n).config.annotations?.readOnlyHint).toBe(true);
+      expect(String(tool(n).config.description)).not.toMatch(/polygon|fmp|databento|newsquawk/i);
+      expect(String(tool(n).config.description)).not.toMatch(/—/);
+    }
+  });
+});

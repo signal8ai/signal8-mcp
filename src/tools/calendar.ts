@@ -8,6 +8,7 @@
  *   - get_lockup_expirations         GET /calendar/lockup-expirations
  *   - get_post_earnings_movers       GET /calendar/post-earnings-movers
  *   - get_recent_material_filings    GET /filings/recent-material
+ *   - get_catalyst_calendar          GET /calendar/catalysts (2026-11-27)
  *
  * NOTE: `Signal8ApiClient.baseUrl` already includes `/api/v1/public`, so
  * paths here are relative (e.g. `/calendar/...`, NOT `/public/calendar/...`).
@@ -307,6 +308,73 @@ export function registerCalendarTools(server: McpServer, client: Signal8ApiClien
       if (items && items.length > 0) params.items = items.join(',');
       if (limit !== undefined) params.limit = String(limit);
       return toolHandler(() => client.get('/filings/recent-material', params));
+    },
+  );
+
+  // ── Catalyst calendar (2026-11-27) ───────────────────────────
+  server.registerTool(
+    'get_catalyst_calendar',
+    {
+      title: 'Get Catalyst Calendar',
+      description:
+        'Dated catalysts across US-listed companies, one row per (type, company, date): listing ' +
+        'compliance (hearing_deadline: Nasdaq hearing request deadline; hearing_date: Hearings Panel ' +
+        'hearing; panel_deadline; compliance_deadline; pending_suspension), reverse splits ' +
+        '(reverse_split: the market effective date; reverse_split_meeting: a shareholder meeting with a ' +
+        'reverse split proposal) and dilution (warrant_expiry, convertible_maturity, shelf_expiry, ' +
+        'lockup_expiry). Filter by types, a from / to window (default today through 30 days ahead, at most ' +
+        '120 days) and tickers (at most 50). Each row carries title, detail, dateBasis and basisNote: ' +
+        '"stated" = the filing, exchange list or market calendar states the date; "computed" = rule ' +
+        'arithmetic on a stated date (for example a letter date plus 7 calendar days); "estimate" = a ' +
+        'Signal8 estimate, not a stated date. sourceUrl links the record behind it. Per-type access follows ' +
+        'the website: warrant_expiry, convertible_maturity and shelf_expiry need Signal8 Pro and ' +
+        'lockup_expiry a signed-in account; a type this key may not see is status "locked" with a count and ' +
+        'no rows, which means withheld, not absent. status "unavailable" (count null) means the source could ' +
+        'not be read: not measured, never "none". An empty list for an "ok" type means none dated in the ' +
+        'window on file, not that no such event exists. types.<type>.count is market-wide for the window, ' +
+        'before the tickers filter; returned counts the rows sent; truncated true means more matched than ' +
+        'limit. A row is a date on record, not a forecast of an outcome (a hearing can be cancelled, a split ' +
+        'postponed, a warrant exercised early). HTTP 503 FEATURE_DISABLED means the endpoint is switched off.',
+      inputSchema: z.object({
+        types: z
+          .array(
+            z.enum([
+              'hearing_deadline',
+              'hearing_date',
+              'panel_deadline',
+              'compliance_deadline',
+              'pending_suspension',
+              'reverse_split',
+              'reverse_split_meeting',
+              'warrant_expiry',
+              'convertible_maturity',
+              'shelf_expiry',
+              'lockup_expiry',
+            ]),
+          )
+          .min(1)
+          .optional()
+          .describe('Catalyst types to return (default all).'),
+        from: isoDate().optional().describe('Window start YYYY-MM-DD (default today, US Eastern).'),
+        to: isoDate().optional().describe('Window end YYYY-MM-DD (default from + 30 days; at most 120 days after from).'),
+        tickers: z
+          .array(z.string().min(1).max(12))
+          .min(1)
+          .max(50)
+          .optional()
+          .describe('Only these symbols (at most 50).'),
+        limit: z.number().int().min(1).max(1000).optional().describe('Max rows (1-1000, default 200).'),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ types, from, to, tickers, limit }) => {
+      const params: Record<string, string> = {};
+      if (types && types.length > 0) params.types = types.join(',');
+      if (from) params.from = from;
+      if (to) params.to = to;
+      if (tickers && tickers.length > 0) params.tickers = tickers.map((t) => t.trim().toUpperCase()).join(',');
+      if (limit !== undefined) params.limit = String(limit);
+      return toolHandler(() => client.get('/calendar/catalysts', params));
     },
   );
 }

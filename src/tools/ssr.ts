@@ -28,19 +28,29 @@ export function registerSsrTools(server: McpServer, client: Signal8ApiClient): v
         'during previousDate (restricted all of sessionDate). On a weekend or holiday sessionDate is the next ' +
         'trading day and `today` is empty. Each row has ticker, name, exchange, triggerDate, triggerAt (ISO), ' +
         'movePct (move at the trigger vs the prior close, null = not measured), source and timeBasis. source ' +
-        '"exchange_list" is the listing exchange\'s published Rule 201 list (Nasdaq-listed stocks), with the ' +
-        'exchange\'s trigger time; source "computed" is Signal8\'s own reading of stored prices for stocks the ' +
-        'exchange list does not cover (or before it is published), with timeBasis "minute_bars" (first ' +
+        '"exchange_list" is the listing exchange\'s published Rule 201 list, with the exchange\'s trigger time: ' +
+        'Nasdaq\'s list for Nasdaq-listed stocks, and NYSE Group\'s daily list for NYSE, NYSE American and NYSE ' +
+        'Arca listings (published in the evening after the session, so a same-day trigger on those stocks is ' +
+        'exchange_flag or computed until it lands, and the next-day carry-over is from the list; NYSE Group rows ' +
+        'also carry deactivationDate, the exchange\'s first date the restriction no longer applies); source ' +
+        '"exchange_flag" is the short sale restriction flag the NYSE and NYSE ' +
+        'American trading status feeds publish for every listed stock they trade (exchange reported; triggerAt is ' +
+        'the exchange\'s own timestamp, or null when the restriction was only seen restated before the next open); ' +
+        'source "computed" is Signal8\'s own reading of stored prices, shown only when neither exchange source ' +
+        'reported the stock and the flag feed did not cover that whole session, with timeBasis "minute_bars" (first ' +
         'regular-hours minute at the trigger, set the next morning) or "first_seen" (when a live price read ' +
         'first showed it; the real trigger can be earlier). A stock missing from the list is not confirmed ' +
-        'unrestricted: computed rows are a lower bound. exchangeList says whether the exchange\'s end-of-day ' +
-        'list for each date has been read (final, partial, not_read). The optional ticker narrows both lists to one symbol.',
+        'unrestricted: computed rows are a lower bound. exchangeList (Nasdaq) and nyseList (NYSE Group) say whether ' +
+        'each exchange\'s end-of-day list for each date has been read (final, partial, not_read); exchangeFlag says whether the flag feed covered ' +
+        'each date\'s whole session (covered, not_covered). The optional ticker narrows both lists to one symbol. ' +
+        'Preferred, right and warrant classes keep a lowercase class letter (AHTpD is AHT preferred D); the ' +
+        'all-capitals form (AHTPD) also matches when no other security shares it.',
       inputSchema: z.object({
         ticker: z
           .string()
           .regex(/^\$?[A-Za-z0-9.\-]{1,12}$/)
           .optional()
-          .describe('Exact ticker to check (e.g. "AAPL"). Omit for the whole list.'),
+          .describe('Ticker to check (e.g. "AAPL", or "AHTpD" for a preferred class). Omit for the whole list.'),
       }),
       annotations: { readOnlyHint: true },
     },
